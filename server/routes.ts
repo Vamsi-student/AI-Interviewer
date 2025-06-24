@@ -26,6 +26,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const token = authHeader.substring(7);
+      
+      // Handle demo mode
+      if (token === 'demo-token') {
+        let user = await storage.getUserByFirebaseUid('demo-user-123');
+        if (!user) {
+          user = await storage.createUser({
+            firebaseUid: 'demo-user-123',
+            email: 'demo@example.com',
+            name: 'Demo User'
+          });
+        }
+        req.user = user;
+        return next();
+      }
+
       const decodedToken = await verifyFirebaseToken(token);
       
       // Get or create user

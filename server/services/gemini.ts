@@ -85,7 +85,42 @@ export async function generateMCQQuestions(role: string, experienceLevel: string
     return JSON.parse(jsonResponse);
   } catch (error) {
     console.error("Error generating MCQ questions:", error);
-    throw new Error("Failed to generate MCQ questions");
+    
+    // Return fallback questions when AI is unavailable
+    const fallbackQuestions: MCQQuestion[] = [
+      {
+        question: "What is the primary purpose of version control systems like Git?",
+        options: ["Code compilation", "Track changes and collaborate", "Database management", "User interface design"],
+        correctAnswer: "Track changes and collaborate",
+        explanation: "Version control systems help track changes in code and enable collaboration among developers."
+      },
+      {
+        question: "Which HTTP method is typically used to retrieve data from a server?",
+        options: ["POST", "GET", "PUT", "DELETE"],
+        correctAnswer: "GET",
+        explanation: "GET requests are used to retrieve data from a server without modifying it."
+      },
+      {
+        question: "What does API stand for?",
+        options: ["Application Programming Interface", "Advanced Programming Integration", "Automated Process Integration", "Application Process Interface"],
+        correctAnswer: "Application Programming Interface",
+        explanation: "API stands for Application Programming Interface, which defines how software components communicate."
+      },
+      {
+        question: "In object-oriented programming, what is encapsulation?",
+        options: ["Creating multiple instances", "Hiding internal details", "Inheritance of properties", "Method overloading"],
+        correctAnswer: "Hiding internal details",
+        explanation: "Encapsulation is the practice of hiding internal implementation details while exposing only necessary interfaces."
+      },
+      {
+        question: "What is the time complexity of binary search?",
+        options: ["O(n)", "O(log n)", "O(n²)", "O(1)"],
+        correctAnswer: "O(log n)",
+        explanation: "Binary search has logarithmic time complexity as it eliminates half the search space in each iteration."
+      }
+    ];
+    
+    return fallbackQuestions.slice(0, count);
   }
 }
 
@@ -165,7 +200,36 @@ export async function generateCodingQuestion(role: string, experienceLevel: stri
     return JSON.parse(jsonResponse);
   } catch (error) {
     console.error("Error generating coding question:", error);
-    throw new Error("Failed to generate coding question");
+    
+    // Return fallback coding question
+    return {
+      title: "Two Sum",
+      description: "Given an array of integers nums and an integer target, return indices of the two numbers such that they add up to target. You may assume that each input would have exactly one solution, and you may not use the same element twice.",
+      difficulty: "Easy",
+      constraints: [
+        "2 <= nums.length <= 10^4",
+        "-10^9 <= nums[i] <= 10^9",
+        "-10^9 <= target <= 10^9",
+        "Only one valid answer exists"
+      ],
+      examples: [
+        {
+          input: "nums = [2,7,11,15], target = 9",
+          output: "[0,1]",
+          explanation: "Because nums[0] + nums[1] == 9, we return [0, 1]."
+        }
+      ],
+      testCases: [
+        {
+          input: "[2,7,11,15]\n9",
+          expectedOutput: "[0,1]"
+        },
+        {
+          input: "[3,2,4]\n6",
+          expectedOutput: "[1,2]"
+        }
+      ]
+    };
   }
 }
 
