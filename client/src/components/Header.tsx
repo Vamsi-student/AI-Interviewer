@@ -32,7 +32,7 @@ export default function Header({ onAuthClick }: HeaderProps) {
   return (
     <header className="bg-white shadow-sm fixed w-full top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
+        <div className="flex justify-between items-center h-16 relative">
           {/* Logo */}
           <div className="flex items-center">
             <Link href="/" className="flex items-center">
@@ -42,12 +42,12 @@ export default function Header({ onAuthClick }: HeaderProps) {
           </div>
 
           {/* Desktop Navigation */}
-          <nav className="hidden md:flex space-x-8">
+          <nav className="hidden md:flex items-center space-x-8">
             {navLinks.map((link) => (
               <a
                 key={link.href}
                 href={link.href}
-                className="text-gray-700 hover:text-primary px-3 py-2 text-sm font-medium transition-colors"
+                className="text-gray-700 hover:text-primary px-3 py-2 text-sm font-medium transition-colors whitespace-nowrap"
               >
                 {link.label}
               </a>
@@ -58,6 +58,7 @@ export default function Header({ onAuthClick }: HeaderProps) {
           <div className="hidden md:flex items-center space-x-4">
             {user && dbUser ? (
               <div className="flex items-center space-x-4">
+                <span className="text-sm text-gray-600">Welcome, {dbUser.name}</span>
                 <Link href="/dashboard">
                   <Button variant="ghost" className="text-gray-700 hover:text-primary">
                     Dashboard
@@ -82,7 +83,7 @@ export default function Header({ onAuthClick }: HeaderProps) {
                 </Button>
                 <Button
                   onClick={onAuthClick}
-                  className="btn-primary"
+                  className="bg-primary text-white hover:bg-primary/90"
                 >
                   Get Started
                 </Button>

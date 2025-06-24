@@ -2,6 +2,22 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Fix navigation layout issues */
+.nav-fix {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: nowrap;
+  gap: 1rem;
+}
+
+/* Ensure proper text alignment */
+nav a, nav button {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
 :root {
   --background: hsl(0, 0%, 100%);
   --foreground: hsl(20, 14.3%, 4.1%);

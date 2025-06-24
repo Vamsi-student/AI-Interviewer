@@ -29,6 +29,12 @@ export const handleRedirectResult = async () => {
 };
 
 export const signOut = async () => {
+  localStorage.removeItem('demo-user');
+  if (!auth) {
+    // For demo mode, just clear localStorage
+    window.location.reload();
+    return;
+  }
   return await firebaseSignOut(auth);
 };
 
