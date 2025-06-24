@@ -1,4 +1,6 @@
 import { users, interviews, questions, responses, type User, type InsertUser, type Interview, type InsertInterview, type Question, type InsertQuestion, type Response, type InsertResponse } from "@shared/schema";
+import { db } from "./db";
+import { eq } from "drizzle-orm";
 
 export interface IStorage {
   // User operations
@@ -158,4 +160,102 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+export class DatabaseStorage implements IStorage {
+  async getUser(id: number): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.id, id));
+    return user || undefined;
+  }
+
+  async getUserByFirebaseUid(firebaseUid: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.firebaseUid, firebaseUid));
+    return user || undefined;
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
+    return user || undefined;
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const [user] = await db
+      .insert(users)
+      .values(insertUser)
+      .returning();
+    return user;
+  }
+
+  async getInterview(id: number): Promise<Interview | undefined> {
+    const [interview] = await db.select().from(interviews).where(eq(interviews.id, id));
+    return interview || undefined;
+  }
+
+  async getInterviewsByUserId(userId: number): Promise<Interview[]> {
+    return await db.select().from(interviews).where(eq(interviews.userId, userId));
+  }
+
+  async createInterview(insertInterview: InsertInterview): Promise<Interview> {
+    const [interview] = await db
+      .insert(interviews)
+      .values(insertInterview)
+      .returning();
+    return interview;
+  }
+
+  async updateInterview(id: number, updates: Partial<Interview>): Promise<Interview | undefined> {
+    const [interview] = await db
+      .update(interviews)
+      .set(updates)
+      .where(eq(interviews.id, id))
+      .returning();
+    return interview || undefined;
+  }
+
+  async getQuestion(id: number): Promise<Question | undefined> {
+    const [question] = await db.select().from(questions).where(eq(questions.id, id));
+    return question || undefined;
+  }
+
+  async getQuestionsByInterviewId(interviewId: number): Promise<Question[]> {
+    return await db.select().from(questions).where(eq(questions.interviewId, interviewId));
+  }
+
+  async createQuestion(insertQuestion: InsertQuestion): Promise<Question> {
+    const [question] = await db
+      .insert(questions)
+      .values(insertQuestion)
+      .returning();
+    return question;
+  }
+
+  async getResponse(id: number): Promise<Response | undefined> {
+    const [response] = await db.select().from(responses).where(eq(responses.id, id));
+    return response || undefined;
+  }
+
+  async getResponsesByInterviewId(interviewId: number): Promise<Response[]> {
+    return await db.select().from(responses).where(eq(responses.interviewId, interviewId));
+  }
+
+  async getResponsesByQuestionId(questionId: number): Promise<Response[]> {
+    return await db.select().from(responses).where(eq(responses.questionId, questionId));
+  }
+
+  async createResponse(insertResponse: InsertResponse): Promise<Response> {
+    const [response] = await db
+      .insert(responses)
+      .values(insertResponse)
+      .returning();
+    return response;
+  }
+
+  async updateResponse(id: number, updates: Partial<Response>): Promise<Response | undefined> {
+    const [response] = await db
+      .update(responses)
+      .set(updates)
+      .where(eq(responses.id, id))
+      .returning();
+    return response || undefined;
+  }
+}
+
+export const storage = new DatabaseStorage();
