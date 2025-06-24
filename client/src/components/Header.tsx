@@ -26,7 +26,6 @@ export default function Header({ onAuthClick }: HeaderProps) {
     { href: "#home", label: "Home" },
     { href: "#features", label: "Features" },
     { href: "#how-it-works", label: "How it Works" },
-    { href: "#testimonials", label: "Testimonials" },
   ];
 
   return (

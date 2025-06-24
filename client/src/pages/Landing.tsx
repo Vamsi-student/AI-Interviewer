@@ -4,7 +4,7 @@ import Header from "@/components/Header";
 import Hero from "@/components/Hero";
 import Features from "@/components/Features";
 import HowItWorks from "@/components/HowItWorks";
-import Testimonials from "@/components/Testimonials";
+
 import Footer from "@/components/Footer";
 import AuthModal from "@/components/AuthModal";
 import { Button } from "@/components/ui/button";
@@ -45,7 +45,6 @@ export default function Landing() {
         />
         <Features />
         <HowItWorks />
-        <Testimonials />
         
         {/* Call to Action Section */}
         <section className="py-20 bg-gradient-to-r from-primary to-purple-600 relative overflow-hidden">

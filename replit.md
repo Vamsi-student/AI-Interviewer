@@ -105,6 +105,7 @@ This is a full-stack AI-powered interview practice platform built with React, Ex
 - June 24, 2025: Migrated from in-memory storage to database storage
 - June 24, 2025: Implemented fallback system for AI services with demo authentication
 - June 24, 2025: Tested and verified complete interview flow functionality
+- June 24, 2025: Removed testimonials section from landing page per user request
 
 ## User Preferences
 
