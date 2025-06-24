@@ -76,7 +76,8 @@ export default function Interview() {
     return null;
   }
 
-  const currentStageQuestions = questions.filter(q => q.stage === interview.currentStage);
+  const currentStage = interview?.currentStage || 1;
+  const currentStageQuestions = questions.filter(q => q.stage === currentStage);
   const currentQuestion = currentStageQuestions[currentQuestionIndex];
 
   const stageInfo = {
@@ -85,10 +86,10 @@ export default function Interview() {
     3: { title: "Voice Interview", icon: Mic, color: "text-purple-600" }
   };
 
-  const currentStageInfo = stageInfo[interview?.currentStage as keyof typeof stageInfo] || stageInfo[1];
+  const currentStageInfo = stageInfo[currentStage as keyof typeof stageInfo] || stageInfo[1];
   const StageIcon = currentStageInfo.icon;
 
-  const progress = ((interview?.currentStage || 1) - 1) * 33.33 + 
+  const progress = ((currentStage - 1) * 33.33) + 
     ((currentQuestionIndex / Math.max(currentStageQuestions.length, 1)) * 33.33);
 
   const speakText = (text: string) => {
