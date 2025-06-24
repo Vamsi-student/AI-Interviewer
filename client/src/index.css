@@ -18,6 +18,33 @@ nav a, nav button {
   white-space: nowrap;
 }
 
+/* Ensure button text is visible on gradient backgrounds */
+.btn-primary {
+  background: var(--primary-500);
+  color: white;
+  font-weight: 600;
+}
+
+.btn-primary:hover {
+  background: var(--primary-600);
+}
+
+/* Better contrast for call-to-action buttons */
+.hero-cta-button {
+  background: white !important;
+  color: var(--primary-500) !important;
+  border: 2px solid white !important;
+  font-weight: 600 !important;
+  text-shadow: none !important;
+  box-shadow: 0 4px 14px 0 rgba(0, 0, 0, 0.1) !important;
+}
+
+.hero-cta-button:hover {
+  background: rgba(255, 255, 255, 0.95) !important;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px 0 rgba(0, 0, 0, 0.15) !important;
+}
+
 :root {
   --background: hsl(0, 0%, 100%);
   --foreground: hsl(20, 14.3%, 4.1%);

@@ -25,9 +25,9 @@ export default function Hero({ onStartInterview, onWatchDemo }: HeroProps) {
             <div className="mt-8 flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
               <Button
                 onClick={onStartInterview}
-                className="btn-primary text-lg px-8 py-4 h-auto"
+                className="bg-white text-primary hover:bg-gray-50 text-lg px-8 py-4 h-auto font-semibold shadow-lg border-2 border-white"
               >
-                Start Free Interview
+                Start Your Free Interview
                 <ArrowRight className="ml-2 h-5 w-5" />
               </Button>
               <Button
