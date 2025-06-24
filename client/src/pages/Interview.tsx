@@ -85,10 +85,10 @@ export default function Interview() {
     3: { title: "Voice Interview", icon: Mic, color: "text-purple-600" }
   };
 
-  const currentStageInfo = stageInfo[interview.currentStage as keyof typeof stageInfo];
+  const currentStageInfo = stageInfo[interview?.currentStage as keyof typeof stageInfo] || stageInfo[1];
   const StageIcon = currentStageInfo.icon;
 
-  const progress = ((interview.currentStage - 1) * 33.33) + 
+  const progress = ((interview?.currentStage || 1) - 1) * 33.33 + 
     ((currentQuestionIndex / Math.max(currentStageQuestions.length, 1)) * 33.33);
 
   const speakText = (text: string) => {
