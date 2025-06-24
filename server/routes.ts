@@ -46,8 +46,42 @@ export async function registerRoutes(app: Express): Promise<Server> {
   };
 
   // Auth routes
-  app.post('/api/auth/verify', requireAuth, (req: any, res) => {
-    res.json({ user: req.user });
+  app.post('/api/auth/verify', async (req, res) => {
+    try {
+      const token = req.headers.authorization?.replace('Bearer ', '');
+      if (!token) {
+        return res.status(401).json({ error: 'No token provided' });
+      }
+
+      // Handle demo mode
+      if (token === 'demo-token') {
+        let user = await storage.getUserByFirebaseUid('demo-user-123');
+        if (!user) {
+          user = await storage.createUser({
+            firebaseUid: 'demo-user-123',
+            email: 'demo@example.com',
+            name: 'Demo User'
+          });
+        }
+        return res.json({ user });
+      }
+
+      const decodedToken = await verifyFirebaseToken(token);
+      let user = await storage.getUserByFirebaseUid(decodedToken.uid);
+      
+      if (!user) {
+        user = await storage.createUser({
+          firebaseUid: decodedToken.uid,
+          email: decodedToken.email || '',
+          name: decodedToken.name || decodedToken.email?.split('@')[0] || 'User'
+        });
+      }
+
+      res.json({ user });
+    } catch (error) {
+      console.error('Auth verification error:', error);
+      res.status(401).json({ error: 'Invalid token' });
+    }
   });
 
   // Interview routes

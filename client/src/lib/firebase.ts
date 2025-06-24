@@ -9,6 +9,17 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
+let app;
+let auth;
+
+try {
+  app = initializeApp(firebaseConfig);
+  auth = getAuth(app);
+} catch (error) {
+  console.warn('Firebase initialization failed:', error);
+  // Create mock auth for development
+  auth = null;
+}
+
+export { auth };
 export default app;

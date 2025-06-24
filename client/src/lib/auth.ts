@@ -33,12 +33,16 @@ export const signOut = async () => {
 };
 
 export const onAuthChange = (callback: (user: User | null) => void) => {
+  if (!auth) {
+    // Return a no-op unsubscribe function for demo mode
+    return () => {};
+  }
   return onAuthStateChanged(auth, callback);
 };
 
 export const getAuthToken = async () => {
-  if (auth.currentUser) {
-    return await auth.currentUser.getIdToken();
+  if (!auth || !auth.currentUser) {
+    return null;
   }
-  return null;
+  return await auth.currentUser.getIdToken();
 };
