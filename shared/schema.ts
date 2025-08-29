@@ -1,13 +1,37 @@
-import { pgTable, text, serial, integer, boolean, timestamp, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, boolean, timestamp, jsonb, real } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+
+// Technical roles for robust matching (shared)
+export const technicalRoles = [
+  'software engineer',
+  'backend engineer',
+  'frontend engineer',
+  'full stack engineer',
+  'machine learning engineer',
+  'ai engineer',
+  'data scientist',
+  'devops engineer',
+  'site reliability engineer',
+  'qa engineer',
+  'test engineer',
+  'systems engineer',
+  'embedded engineer',
+  'cloud engineer',
+  'platform engineer',
+  'web developer',
+  'mobile developer',
+];
 
 export const users = pgTable("users", {
   id: serial("id").primaryKey(),
   firebaseUid: text("firebase_uid").notNull().unique(),
   email: text("email").notNull().unique(),
   name: text("name").notNull(),
+  bio: text("bio"),
+  profileImage: text("profile_image"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  lastSignIn: timestamp("last_sign_in"),
 });
 
 export const interviews = pgTable("interviews", {
@@ -17,10 +41,11 @@ export const interviews = pgTable("interviews", {
   experienceLevel: text("experience_level").notNull(),
   status: text("status").notNull().default("in_progress"), // in_progress, completed, abandoned
   currentStage: integer("current_stage").notNull().default(1), // 1: MCQ, 2: Coding, 3: Voice
-  overallScore: integer("overall_score"),
+  overallScore: real("overall_score"),
   feedback: jsonb("feedback"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   completedAt: timestamp("completed_at"),
+  durationMinutes: integer("duration_minutes").default(0),
 });
 
 export const questions = pgTable("questions", {
@@ -44,7 +69,7 @@ export const responses = pgTable("responses", {
   audioUrl: text("audio_url"), // For voice responses
   transcription: text("transcription"), // For voice responses
   isCorrect: boolean("is_correct"),
-  score: integer("score"),
+  score: real("score"),
   feedback: jsonb("feedback"),
   timeSpent: integer("time_spent"), // in seconds
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -79,3 +104,45 @@ export type Question = typeof questions.$inferSelect;
 export type InsertQuestion = z.infer<typeof insertQuestionSchema>;
 export type Response = typeof responses.$inferSelect;
 export type InsertResponse = z.infer<typeof insertResponseSchema>;
+
+// --- Types for dynamic test harness generation ---
+export type FunctionSignatureDetails = {
+  functionName: string;
+  parameters: Array<{
+    name: string;
+    abstractType: string;
+    languageSpecificTypes: { [lang: string]: string };
+  }>;
+  returnType: string;
+  exampleInputFormat?: string;
+  exampleOutputFormat?: string;
+};
+
+export type TestCaseInput = {
+  [paramName: string]: any;
+};
+
+// --- Coding Problems and Test Cases Tables ---
+export const problems = pgTable('problems', {
+  id: serial('id').primaryKey(),
+  title: text('title').notNull(),
+  description: text('description').notNull(),
+  functionSignatureDetails: jsonb('function_signature_details').$type<FunctionSignatureDetails>().notNull(),
+});
+
+export const testCases = pgTable('test_cases', {
+  id: serial('id').primaryKey(),
+  problemId: integer('problem_id').references(() => problems.id).notNull(),
+  inputData: jsonb('input_data').$type<TestCaseInput>().notNull(),
+  expectedOutputData: jsonb('expected_output_data').$type<any>().notNull(),
+});
+
+// Export all tables as a schema object for Drizzle registration
+export const schema = {
+  users,
+  interviews,
+  questions,
+  responses,
+  problems,
+  testCases,
+};

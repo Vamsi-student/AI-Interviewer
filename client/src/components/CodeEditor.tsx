@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Play, CheckCircle, XCircle, Clock, MemoryStick } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from '@/lib/queryClient';
+import { useAuth } from '@/hooks/useAuth';
 
 interface CodeEditorProps {
   question: any;
@@ -15,11 +17,11 @@ interface CodeEditorProps {
 }
 
 const LANGUAGES = [
-  { id: 'python', name: 'Python', defaultCode: '# Write your solution here\ndef solution():\n    pass' },
-  { id: 'javascript', name: 'JavaScript', defaultCode: '// Write your solution here\nfunction solution() {\n    \n}' },
-  { id: 'java', name: 'Java', defaultCode: 'public class Solution {\n    public void solution() {\n        \n    }\n}' },
-  { id: 'cpp', name: 'C++', defaultCode: '#include <iostream>\nusing namespace std;\n\nint main() {\n    // Write your solution here\n    return 0;\n}' },
-  { id: 'c', name: 'C', defaultCode: '#include <stdio.h>\n\nint main() {\n    // Write your solution here\n    return 0;\n}' }
+  { id: 'python', name: 'Python', defaultCode: '# Implement the function as described. Do NOT use input() or print(). Return the result.\ndef solution(s):\n    # your code here\n    return ...', placeholder: '# Implement the function as described. Do NOT use input() or print(). Return the result.\ndef solution(s):\n    # your code here\n    return ...' },
+  { id: 'javascript', name: 'JavaScript', defaultCode: '// Implement the function as described. Do NOT use prompt() or console.log(). Return the result.\nfunction solution(s) {\n    // your code here\n    return ...;\n}', placeholder: '// Implement the function as described. Do NOT use prompt() or console.log(). Return the result.\nfunction solution(s) {\n    // your code here\n    return ...;\n}' },
+  { id: 'java', name: 'Java', defaultCode: '// Implement the function as described. Do NOT use Scanner or System.out.println(). Return the result.\npublic class Solution {\n    public static int solution(String s) {\n        // your code here\n        return ...;\n    }\n}', placeholder: '// Implement the function as described. Do NOT use Scanner or System.out.println(). Return the result.\npublic class Solution {\n    public static int solution(String s) {\n        // your code here\n        return ...;\n    }\n}' },
+  { id: 'cpp', name: 'C++', defaultCode: '// Implement the function as described. Do NOT use cin/cout. Return the result.\nclass Solution {\npublic:\n    int solution(std::string s) {\n        // your code here\n        return ...;\n    }\n};', placeholder: '// Implement the function as described. Do NOT use cin/cout. Return the result.\nclass Solution {\npublic:\n    int solution(std::string s) {\n        // your code here\n        return ...;\n    }\n};' },
+  { id: 'c', name: 'C', defaultCode: '// Implement the function as described. Do NOT use scanf/printf. Return the result.\nint solution(char* s) {\n    // your code here\n    return ...;\n}', placeholder: '// Implement the function as described. Do NOT use scanf/printf. Return the result.\nint solution(char* s) {\n    // your code here\n    return ...;\n}' }
 ];
 
 export default function CodeEditor({ question, onSubmit, disabled }: CodeEditorProps) {
@@ -28,6 +30,7 @@ export default function CodeEditor({ question, onSubmit, disabled }: CodeEditorP
   const [executionResult, setExecutionResult] = useState<any>(null);
   const [isExecuting, setIsExecuting] = useState(false);
   const { toast } = useToast();
+  const { getToken } = useAuth();
 
   const questionData = typeof question.question === 'string' 
     ? JSON.parse(question.question) 
@@ -52,26 +55,16 @@ export default function CodeEditor({ question, onSubmit, disabled }: CodeEditorP
 
     setIsExecuting(true);
     try {
-      const response = await fetch('/api/code/execute', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${await getAuthToken()}`,
-        },
-        body: JSON.stringify({
-          code,
-          language: selectedLanguage,
-          testCases: questionData.testCases || []
-        }),
+      const response = await apiRequest('POST', '/api/code/execute', {
+        userCode: code,
+        language: selectedLanguage,
+        testCases: questionData.testCases || []
       });
-
       if (!response.ok) {
         throw new Error('Failed to execute code');
       }
-
       const result = await response.json();
       setExecutionResult(result);
-
       if (result.passed) {
         toast({
           title: "All Tests Passed!",
@@ -107,11 +100,6 @@ export default function CodeEditor({ question, onSubmit, disabled }: CodeEditorP
     }
 
     onSubmit(code, executionResult);
-  };
-
-  const getAuthToken = async () => {
-    // This should be implemented to get the current auth token
-    return localStorage.getItem('authToken') || '';
   };
 
   return (
@@ -181,6 +169,22 @@ export default function CodeEditor({ question, onSubmit, disabled }: CodeEditorP
         </CardContent>
       </Card>
 
+      {/* Coding Challenge Instructions */}
+      <Card className="mb-4 border-blue-500 border-2 bg-blue-50">
+        <CardHeader>
+          <CardTitle className="text-lg text-blue-800">Coding Challenge Instructions</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ul className="list-disc list-inside text-blue-900 space-y-1">
+            <li>Implement the function as described in the problem statement.</li>
+            <li><b>Do not use <code>input()</code> or <code>print()</code> in your code.</b></li>
+            <li>Your function should accept the required arguments and <b>return</b> the result.</li>
+            <li>The platform will call your function directly with test cases.</li>
+            <li>Example (Python): <code>def solution(s):</code> <span className="text-gray-600"># return the answer</span></li>
+          </ul>
+        </CardContent>
+      </Card>
+
       {/* Code Editor */}
       <Card>
         <CardHeader>
@@ -216,7 +220,7 @@ export default function CodeEditor({ question, onSubmit, disabled }: CodeEditorP
               value={code}
               onChange={(e) => setCode(e.target.value)}
               className="w-full h-96 p-4 font-mono text-sm border-0 resize-none focus:outline-none focus:ring-0"
-              placeholder="Write your code here..."
+              placeholder={LANGUAGES.find(lang => lang.id === selectedLanguage)?.placeholder}
               disabled={disabled}
             />
           </div>
@@ -237,6 +241,27 @@ export default function CodeEditor({ question, onSubmit, disabled }: CodeEditorP
             </CardTitle>
           </CardHeader>
           <CardContent>
+            {/* Warning banner for fallback mode */}
+            {executionResult.error && executionResult.error.includes('Judge0 API') && (
+              <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <svg className="h-5 w-5 text-yellow-400" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <div className="ml-3">
+                    <h3 className="text-sm font-medium text-yellow-800">
+                      Limited Code Validation
+                    </h3>
+                    <div className="mt-1 text-sm text-yellow-700">
+                      {executionResult.error}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+            
             <Tabs defaultValue="summary" className="w-full">
               <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="summary">Summary</TabsTrigger>

@@ -29,9 +29,16 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
+    host: true, // 👈 allows external access
     fs: {
       strict: true,
-      deny: ["**/.*"],
+      deny: ["/.*"],
     },
+    proxy: {
+      '/api': 'http://localhost:5000',
+    },
+    allowedHosts: [
+      '4601dbcdb9be.ngrok-free.app', // 👈 your full domain
+    ],
   },
 });

@@ -1,8 +1,9 @@
 import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Mic, MicOff, Play, Pause, Square } from "lucide-react";
+import { Mic, MicOff, Play, Pause, Square, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/useAuth";
 
 interface VoiceRecorderProps {
   onRecordingComplete: (audioBlob: Blob) => void;
@@ -15,11 +16,60 @@ export default function VoiceRecorder({ onRecordingComplete, disabled }: VoiceRe
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [recordingTime, setRecordingTime] = useState(0);
+  const [transcript, setTranscript] = useState<string | null>(null);
+  const [isTranscribing, setIsTranscribing] = useState(false);
   
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
+  const { getToken } = useAuth();
+
+  const transcribeAudio = async (blob: Blob) => {
+    setIsTranscribing(true);
+    setTranscript(null);
+    try {
+      const formData = new FormData();
+      formData.append('audio', blob, 'audio.wav');
+
+      // Get authentication token
+      const token = await getToken();
+
+      const response = await fetch('/api/transcribe', {
+        method: 'POST',
+        body: formData,
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setTranscript(data.transcript);
+        toast({
+          title: "Transcription Complete",
+          description: "Your audio has been transcribed successfully!",
+        });
+      } else {
+        setTranscript('Transcription failed: ' + (data.message || 'Unknown error'));
+        toast({
+          title: "Transcription Failed",
+          description: data.message || 'Failed to transcribe audio',
+          variant: "destructive",
+        });
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error';
+      setTranscript('Transcription error: ' + errorMessage);
+      toast({
+        title: "Transcription Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
 
   const startRecording = async () => {
     try {
@@ -40,6 +90,9 @@ export default function VoiceRecorder({ onRecordingComplete, disabled }: VoiceRe
         const url = URL.createObjectURL(blob);
         setAudioUrl(url);
         onRecordingComplete(blob);
+        
+        // Start transcription automatically
+        transcribeAudio(blob);
         
         // Stop all tracks to release microphone
         stream.getTracks().forEach(track => track.stop());
@@ -95,6 +148,7 @@ export default function VoiceRecorder({ onRecordingComplete, disabled }: VoiceRe
     setAudioUrl(null);
     setRecordingTime(0);
     setIsPlaying(false);
+    setTranscript(null);
     
     if (audioRef.current) {
       audioRef.current.pause();
@@ -185,6 +239,24 @@ export default function VoiceRecorder({ onRecordingComplete, disabled }: VoiceRe
               <span className="text-xs text-gray-500">
                 Duration: {formatTime(recordingTime)}
               </span>
+            </div>
+          )}
+
+          {/* Transcription Status */}
+          {isTranscribing && (
+            <div className="flex items-center space-x-2 text-blue-600 text-sm">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>Transcribing audio...</span>
+            </div>
+          )}
+
+          {/* Transcript Display */}
+          {transcript && (
+            <div className="w-full bg-gray-50 rounded-lg p-4 border">
+              <h4 className="text-sm font-semibold text-gray-700 mb-2">Transcript:</h4>
+              <div className="text-sm text-gray-800 leading-relaxed">
+                {transcript}
+              </div>
             </div>
           )}
 

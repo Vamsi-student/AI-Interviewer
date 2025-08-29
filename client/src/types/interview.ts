@@ -9,6 +9,7 @@ export interface Interview {
   feedback?: any;
   createdAt: Date;
   completedAt?: Date;
+  durationMinutes?: number;
 }
 
 export interface Question {
@@ -64,4 +65,9 @@ export interface CodingQuestionData {
     input: string;
     expectedOutput: string;
   }>;
+}
+
+export interface User {
+  createdAt: Date;
+  lastSignIn?: Date;
 }

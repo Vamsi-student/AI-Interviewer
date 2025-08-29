@@ -1,10 +1,15 @@
+import dotenv from "dotenv";
+dotenv.config();
+
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
+import resumeRouter from './routes/resume';
+
 
 const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+app.use(express.json({ limit: '20mb' }));
+app.use(express.urlencoded({ limit: '20mb', extended: true }));
 
 app.use((req, res, next) => {
   const start = Date.now();
@@ -37,14 +42,28 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Add global error handlers to prevent crashes
+  process.on('uncaughtException', (error) => {
+    console.error('Uncaught Exception:', error);
+    // Don't exit the process, just log the error
+  });
+
+  process.on('unhandledRejection', (reason, promise) => {
+    console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+    // Don't exit the process, just log the error
+  });
+
   const server = await registerRoutes(app);
 
+  app.use('/api/resume', resumeRouter);
+
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+    console.error('Global error handler caught:', err);
     const status = err.status || err.statusCode || 500;
     const message = err.message || "Internal Server Error";
 
     res.status(status).json({ message });
-    throw err;
+    // Don't throw the error again to prevent server crashes
   });
 
   // importantly only setup vite in development and after
@@ -60,11 +79,8 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = 5000;
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
-    log(`serving on port ${port}`);
-  });
+  server.listen(port, () => {
+  log(`Serving on http://localhost:${port}`);
+});
+
 })();

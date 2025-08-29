@@ -1,4 +1,5 @@
 import { QueryClient, QueryFunction } from "@tanstack/react-query";
+import { getAuthToken } from "./auth";
 
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
@@ -13,15 +14,15 @@ export async function apiRequest(
   data?: unknown | undefined,
 ): Promise<Response> {
   // Get auth token for authenticated requests
-  const getToken = () => {
-    const savedUser = localStorage.getItem('demo-user');
-    if (savedUser) {
-      return 'demo-token';
+  // Prefer Firebase token; fall back to demo-token if demo mode is active
+  let token = await getAuthToken();
+  try {
+    if (!token && typeof window !== 'undefined') {
+      const savedDemo = window.localStorage?.getItem('demo-user');
+      if (savedDemo) token = 'demo-token';
     }
-    return null;
-  };
-
-  const token = getToken();
+  } catch (_) {}
+  console.log("Auth token being sent:", token);
   const headers: Record<string, string> = data ? { "Content-Type": "application/json" } : {};
   
   if (token) {
@@ -46,15 +47,8 @@ export const getQueryFn: <T>(options: {
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
     // Get auth token for authenticated requests
-    const getToken = () => {
-      const savedUser = localStorage.getItem('demo-user');
-      if (savedUser) {
-        return 'demo-token';
-      }
-      return null;
-    };
-
-    const token = getToken();
+    const token = await getAuthToken();
+    console.log("Auth token being sent (queryFn):", token);
     const headers: Record<string, string> = {};
     
     if (token) {

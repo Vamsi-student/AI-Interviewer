@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLocation } from "wouter";
+import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,11 +18,13 @@ import {
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import { useInterview } from "@/hooks/useInterview";
+import { useInterviewsQuery } from "@/hooks/useInterview";
 import Header from "@/components/Header";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import ResumeInterview from '../components/ResumeInterview';
 
 const ROLES = [
   "Software Engineer",
@@ -48,12 +50,13 @@ const EXPERIENCE_LEVELS = [
 
 export default function Dashboard() {
   const { dbUser, loading } = useAuth();
-  const { useInterviewsQuery, createInterviewMutation } = useInterview();
-  const [, setLocation] = useLocation();
+  const { createInterviewMutation } = useInterview();
+  const navigate = useNavigate();
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedRole, setSelectedRole] = useState("");
   const [selectedExperience, setSelectedExperience] = useState("");
   const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState<'all' | 'completed' | 'in_progress'>('all');
 
   const { data: interviews = [], isLoading } = useInterviewsQuery();
 
@@ -72,7 +75,7 @@ export default function Dashboard() {
   }
 
   if (!dbUser) {
-    setLocation("/");
+    navigate("/");
     return null;
   }
 
@@ -101,7 +104,7 @@ export default function Dashboard() {
         description: "Your interview has been created. Starting now...",
       });
       
-      setLocation(`/interview/${interview.id}`);
+      navigate(`/interview/${interview.id}`);
     } catch (error) {
       toast({
         title: "Error",
@@ -111,10 +114,10 @@ export default function Dashboard() {
     }
   };
 
-  const completedInterviews = interviews.filter(i => i.status === 'completed');
-  const inProgressInterviews = interviews.filter(i => i.status === 'in_progress');
+  const completedInterviews = interviews.filter((i: any) => i.status === 'completed');
+  const inProgressInterviews = interviews.filter((i: any) => i.status === 'in_progress');
   const averageScore = completedInterviews.length > 0 
-    ? Math.round(completedInterviews.reduce((sum, i) => sum + (i.overallScore || 0), 0) / completedInterviews.length)
+    ? Math.round(completedInterviews.reduce((sum: number, i: any) => sum + (i.overallScore || 0), 0) / completedInterviews.length)
     : 0;
 
   const formatDate = (date: string | Date) => {
@@ -143,12 +146,19 @@ export default function Dashboard() {
     }
   };
 
+  const filteredInterviews =
+    activeTab === 'completed'
+      ? completedInterviews
+      : activeTab === 'in_progress'
+      ? inProgressInterviews
+      : interviews;
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Header />
       
       <main className="pt-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8 py-6 sm:py-8">
           {/* Welcome Section */}
           <div className="mb-8">
             <h1 className="text-3xl font-bold text-gray-900 mb-2">
@@ -160,7 +170,7 @@ export default function Dashboard() {
           </div>
 
           {/* Stats Cards */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-8">
             <Card>
               <CardContent className="p-6">
                 <div className="flex items-center">
@@ -219,7 +229,7 @@ export default function Dashboard() {
           </div>
 
           {/* Quick Actions */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8">
             {/* Start New Interview */}
             <Card className="lg:col-span-1">
               <CardHeader>
@@ -243,47 +253,71 @@ export default function Dashboard() {
                     <DialogHeader>
                       <DialogTitle>Start New Interview</DialogTitle>
                     </DialogHeader>
-                    <div className="space-y-4">
-                      <div>
-                        <Label htmlFor="role">Target Role</Label>
-                        <Select value={selectedRole} onValueChange={setSelectedRole}>
-                          <SelectTrigger className="mt-1">
-                            <SelectValue placeholder="Select a role" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {ROLES.map((role) => (
-                              <SelectItem key={role} value={role}>
-                                {role}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      
-                      <div>
-                        <Label htmlFor="experience">Experience Level</Label>
-                        <Select value={selectedExperience} onValueChange={setSelectedExperience}>
-                          <SelectTrigger className="mt-1">
-                            <SelectValue placeholder="Select experience level" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {EXPERIENCE_LEVELS.map((level) => (
-                              <SelectItem key={level} value={level}>
-                                {level}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      
-                      <Button 
-                        onClick={handleCreateInterview}
-                        disabled={createInterviewMutation.isPending}
-                        className="w-full btn-primary"
-                      >
-                        {createInterviewMutation.isPending ? "Creating..." : "Start Interview"}
-                      </Button>
-                    </div>
+                    <ResumeInterview
+                      onCreate={async (parsed) => {
+                        try {
+                          const interview = await createInterviewMutation.mutateAsync({
+                            role: parsed.role || '',
+                            experienceLevel: parsed.experienceLevel || '',
+                          });
+                          setModalOpen(false);
+                          setSelectedRole("");
+                          setSelectedExperience("");
+                          toast({
+                            title: "Interview Created!",
+                            description: "Your interview has been created. Starting now...",
+                          });
+                          navigate(`/interview/${interview.id}`);
+                        } catch (error) {
+                          toast({
+                            title: "Error",
+                            description: "Failed to create interview. Please try again.",
+                            variant: "destructive",
+                          });
+                        }
+                      }}
+                      roleForm={
+                        <div className="space-y-4">
+                          <div>
+                            <Label htmlFor="role">Target Role</Label>
+                            <Select value={selectedRole} onValueChange={setSelectedRole}>
+                              <SelectTrigger className="mt-1">
+                                <SelectValue placeholder="Select a role" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {ROLES.map((role) => (
+                                  <SelectItem key={role} value={role}>
+                                    {role}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <div>
+                            <Label htmlFor="experience">Experience Level</Label>
+                            <Select value={selectedExperience} onValueChange={setSelectedExperience}>
+                              <SelectTrigger className="mt-1">
+                                <SelectValue placeholder="Select experience level" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {EXPERIENCE_LEVELS.map((level) => (
+                                  <SelectItem key={level} value={level}>
+                                    {level}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          <Button
+                            onClick={handleCreateInterview}
+                            disabled={createInterviewMutation.isPending}
+                            className="w-full btn-primary"
+                          >
+                            {createInterviewMutation.isPending ? "Creating..." : "Start Interview"}
+                          </Button>
+                        </div>
+                      }
+                    />
                   </DialogContent>
                 </Dialog>
               </CardContent>
@@ -298,17 +332,36 @@ export default function Dashboard() {
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {interviews.length === 0 ? (
-                  <div className="text-center py-8">
-                    <Brain className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-600">No interviews yet</p>
-                    <p className="text-sm text-gray-500">Start your first interview to see it here</p>
-                  </div>
-                ) : (
-                  <div className="space-y-4">
-                    {interviews.slice(0, 5).map((interview) => (
-                      <div key={interview.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors">
-                        <div className="flex items-center space-x-3">
+                {/* Tabs/Filters for interview list */}
+                <div className="flex flex-wrap items-center gap-2 mb-6">
+                  <button
+                    className={`px-4 py-2 rounded-lg font-medium border transition ${activeTab === 'all' ? 'bg-primary text-white border-primary' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'}`}
+                    onClick={() => setActiveTab('all')}
+                  >
+                    All
+                  </button>
+                  <button
+                    className={`px-4 py-2 rounded-lg font-medium border transition ${activeTab === 'completed' ? 'bg-green-600 text-white border-green-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'}`}
+                    onClick={() => setActiveTab('completed')}
+                  >
+                    Completed
+                  </button>
+                  <button
+                    className={`px-4 py-2 rounded-lg font-medium border transition ${activeTab === 'in_progress' ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'}`}
+                    onClick={() => setActiveTab('in_progress')}
+                  >
+                    In Progress
+                  </button>
+                </div>
+
+                {/* Interview list (filtered) */}
+                <div className="space-y-4">
+                  {filteredInterviews.length === 0 ? (
+                    <div className="text-gray-500 text-center">No interviews found for this category.</div>
+                  ) : (
+                    filteredInterviews.map((interview: any, idx: number) => (
+                      <div key={interview.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 border rounded-lg hover:bg-gray-50 transition-colors w-full">
+                        <div className="flex items-center space-x-3 w-full">
                           <div className="p-2 bg-gray-100 rounded-lg">
                             {getStageIcon(interview.currentStage)}
                           </div>
@@ -334,20 +387,22 @@ export default function Dashboard() {
                             variant="outline"
                             size="sm"
                             onClick={() => {
+                              console.log('Navigating to results:', interview.id, interview.status);
                               if (interview.status === 'completed') {
-                                setLocation(`/results/${interview.id}`);
+                                navigate(`/results/${interview.id}`);
                               } else {
-                                setLocation(`/interview/${interview.id}`);
+                                navigate(`/interview/${interview.id}`);
                               }
                             }}
+                            className="mt-3 sm:mt-0 sm:ml-4 w-full sm:w-auto whitespace-nowrap"
                           >
                             {interview.status === 'completed' ? 'View Results' : 'Continue'}
                           </Button>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                )}
+                    ))
+                  )}
+                </div>
               </CardContent>
             </Card>
           </div>

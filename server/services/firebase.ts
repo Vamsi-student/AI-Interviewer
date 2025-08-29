@@ -11,7 +11,11 @@ try {
   }
   firebaseInitialized = true;
 } catch (error) {
-  console.warn('Firebase Admin SDK not initialized - running in demo mode:', error.message);
+  if (error instanceof Error) {
+    console.warn('Firebase Admin SDK not initialized - running in demo mode:', error.message);
+  } else {
+    console.warn('Firebase Admin SDK not initialized - running in demo mode:', String(error));
+  }
   firebaseInitialized = false;
 }
 
@@ -25,7 +29,11 @@ export async function verifyFirebaseToken(idToken: string) {
     const decodedToken = await admin.auth().verifyIdToken(idToken);
     return decodedToken;
   } catch (error) {
-    console.error('Token verification failed:', error);
+    if (error instanceof Error) {
+      console.error('Token verification failed:', error.message);
+    } else {
+      console.error('Token verification failed:', String(error));
+    }
     throw new Error("Invalid Firebase token");
   }
 }

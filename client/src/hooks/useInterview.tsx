@@ -1,11 +1,101 @@
-import { useState, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useAuth } from "./useAuth";
 import type { Interview, Question, Response, InterviewFormData } from "@/types/interview";
 
+// Query hooks at the top level
+export function useInterviewsQuery() {
+  const { getToken, loading: authLoading } = useAuth();
+  const [enabled, setEnabled] = useState(false);
+  useEffect(() => {
+    if (!authLoading) {
+      getToken().then(token => setEnabled(!!token));
+    }
+  }, [getToken, authLoading]);
+  return useQuery({
+    queryKey: ['/api/interviews'],
+    enabled,
+    queryFn: async () => {
+      const token = await getToken();
+      const response = await apiRequest('GET', `/api/interviews`);
+      return await response.json();
+    }
+  });
+}
+
+export function useInterviewQuery(id: number | null) {
+  const { getToken, loading: authLoading } = useAuth();
+  const [enabled, setEnabled] = useState(false);
+  useEffect(() => {
+    if (!authLoading) {
+      getToken().then(token => setEnabled(!!id && !!token));
+    }
+  }, [id, getToken, authLoading]);
+  return useQuery({
+    queryKey: ['/api/interviews', id],
+    enabled,
+    retry: (failureCount, error: any) => {
+      console.log(`🔄 Interview query retry attempt ${failureCount + 1}:`, error);
+      // Retry up to 5 times for 404 errors (interview might still be processing)
+      if (error?.status === 404 && failureCount < 5) {
+        return true;
+      }
+      return false;
+    },
+    retryDelay: (attemptIndex) => Math.min(500 + (attemptIndex * 300), 800), // 500-800ms backoff
+    queryFn: async () => {
+      const token = await getToken();
+      console.log(`🔍 Fetching interview ${id} with token:`, !!token);
+      const response = await apiRequest('GET', `/api/interviews/${id}`);
+      const data = await response.json();
+      console.log(`✅ Interview ${id} data:`, data);
+      return data;
+    }
+  });
+}
+
+export function useQuestionsQuery(interviewId: number | null) {
+  const { getToken, loading: authLoading } = useAuth();
+  const [enabled, setEnabled] = useState(false);
+  useEffect(() => {
+    if (!authLoading) {
+      getToken().then(token => setEnabled(!!interviewId && !!token));
+    }
+  }, [interviewId, getToken, authLoading]);
+  return useQuery({
+    queryKey: ['/api/interviews', interviewId, 'questions'],
+    enabled,
+    queryFn: async () => {
+      const token = await getToken();
+      const response = await apiRequest('GET', `/api/interviews/${interviewId}/questions`);
+      return await response.json(); // ensure this is an array
+    }
+  });
+}
+
+export function useResponsesQuery(interviewId: number | null) {
+  const { getToken, loading: authLoading } = useAuth();
+  const [enabled, setEnabled] = useState(false);
+  useEffect(() => {
+    if (!authLoading) {
+      getToken().then(token => setEnabled(!!interviewId && !!token));
+    }
+  }, [interviewId, getToken, authLoading]);
+  return useQuery({
+    queryKey: ['/api/interviews', interviewId, 'responses'],
+    enabled,
+    queryFn: async () => {
+      const token = await getToken();
+      const response = await apiRequest('GET', `/api/interviews/${interviewId}/responses`);
+      return await response.json(); // ensure this is an array
+    }
+  });
+}
+
+// Only mutation hooks remain in useInterview
 export function useInterview() {
-  const { getToken } = useAuth();
+  const { getToken, loading: authLoading } = useAuth();
   const queryClient = useQueryClient();
   const [currentInterviewId, setCurrentInterviewId] = useState<number | null>(null);
 
@@ -13,7 +103,7 @@ export function useInterview() {
     mutationFn: async (data: InterviewFormData) => {
       const token = await getToken();
       const response = await apiRequest('POST', '/api/interviews', data);
-      return response.json();
+      return await response.json();
     },
     onSuccess: (interview: Interview) => {
       setCurrentInterviewId(interview.id);
@@ -25,7 +115,7 @@ export function useInterview() {
     mutationFn: async ({ id, data }: { id: number; data: Partial<Interview> }) => {
       const token = await getToken();
       const response = await apiRequest('PUT', `/api/interviews/${id}`, data);
-      return response.json();
+      return await response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/interviews'] });
@@ -39,7 +129,7 @@ export function useInterview() {
     mutationFn: async (interviewId: number) => {
       const token = await getToken();
       const response = await apiRequest('POST', `/api/interviews/${interviewId}/complete`, {});
-      return response.json();
+      return await response.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/interviews'] });
@@ -53,7 +143,7 @@ export function useInterview() {
     mutationFn: async (data: { questionId: number; answer: string; audioBlob?: string }) => {
       const token = await getToken();
       const response = await apiRequest('POST', '/api/responses', data);
-      return response.json();
+      return await response.json();
     },
     onSuccess: () => {
       if (currentInterviewId) {
@@ -64,48 +154,36 @@ export function useInterview() {
 
   const generateVoiceQuestionMutation = useMutation({
     mutationFn: async (interviewId: number) => {
+      console.log('🚨 MUTATION: generateVoiceQuestionMutation called for interview', interviewId);
       const token = await getToken();
       const response = await apiRequest('POST', `/api/interviews/${interviewId}/voice-question`, {});
-      return response.json();
+      return await response.json();
+    },
+    onSuccess: (_, interviewId) => {
+      console.log('✅ Voice question generated successfully for interview', interviewId);
+      queryClient.invalidateQueries({ queryKey: ['/api/interviews', interviewId, 'questions'] });
     },
   });
 
   const executeCodeMutation = useMutation({
-    mutationFn: async (data: { code: string; language: string; testCases: any[] }) => {
+    mutationFn: async (data: { userCode: string; language: string; testCases: any[] }) => {
       const token = await getToken();
       const response = await apiRequest('POST', '/api/code/execute', data);
-      return response.json();
+      return await response.json();
     },
   });
 
-  // Queries
-  const useInterviewsQuery = () => {
-    return useQuery({
-      queryKey: ['/api/interviews'],
-      enabled: !!getToken,
-    });
-  };
-
-  const useInterviewQuery = (id: number | null) => {
-    return useQuery({
-      queryKey: ['/api/interviews', id],
-      enabled: !!id && !!getToken,
-    });
-  };
-
-  const useQuestionsQuery = (interviewId: number | null) => {
-    return useQuery({
-      queryKey: ['/api/interviews', interviewId, 'questions'],
-      enabled: !!interviewId && !!getToken,
-    });
-  };
-
-  const useResponsesQuery = (interviewId: number | null) => {
-    return useQuery({
-      queryKey: ['/api/interviews', interviewId, 'responses'],
-      enabled: !!interviewId && !!getToken,
-    });
-  };
+  const regenerateQuestionsMutation = useMutation({
+    mutationFn: async (interviewId: number) => {
+      const token = await getToken();
+      const response = await apiRequest('POST', `/api/interviews/${interviewId}/regenerate-questions`, {});
+      return await response.json();
+    },
+    onSuccess: (_, interviewId) => {
+      // Only invalidate the questions cache - more targeted approach
+      queryClient.invalidateQueries({ queryKey: ['/api/interviews', interviewId, 'questions'] });
+    },
+  });
 
   return {
     currentInterviewId,
@@ -116,9 +194,6 @@ export function useInterview() {
     submitResponseMutation,
     generateVoiceQuestionMutation,
     executeCodeMutation,
-    useInterviewsQuery,
-    useInterviewQuery,
-    useQuestionsQuery,
-    useResponsesQuery,
+    regenerateQuestionsMutation,
   };
 }
