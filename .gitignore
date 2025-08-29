@@ -4,3 +4,31 @@ dist
 server/public
 vite.config.ts.*
 *.tar.gz
+# Default: Normalize all text files to LF
+* text=auto eol=lf
+
+# JavaScript / TypeScript
+*.js   text eol=lf
+*.ts   text eol=lf
+*.tsx  text eol=lf
+
+# Node & React config files
+*.json text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.md   text eol=lf
+*.env  text eol=lf
+
+# SQL & migrations
+*.sql  text eol=lf
+
+# Shell scripts
+*.sh   text eol=lf
+
+# Ignore binaries
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
