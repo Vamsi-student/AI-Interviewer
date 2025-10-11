@@ -1,31 +1,83 @@
-node_modules
-dist
-.DS_Store
-server/public
+# ====================================
+# FRONTEND (React / Node)
+# ====================================
+node_modules/
+dist/
+server/public/
 vite.config.ts.*
 *.tar.gz
-# Default: Normalize all text files to LF
-* text=auto eol=lf
 
-# JavaScript / TypeScript
+# ====================================
+# BACKEND (Flask / Python)
+# ====================================
+# Virtual environments
+aiinterview_env/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Logs and temporary files
+*.log
+logs/
+tmp/
+temp/
+*.pid
+
+# Configuration and credentials
+*.env
+.env.*
+config.json
+
+# ====================================
+# AI/ML & Model-related
+# ====================================
+# Model weights / checkpoints
+*.pt
+*.pth
+*.h5
+*.pkl
+*.ckpt
+
+# Large binaries
+*.dll
+*.lib
+*.so
+*.dylib
+
+# Data folders
+data/
+datasets/
+media/
+uploads/
+outputs/
+analysis_output_*/
+
+# ====================================
+# IDE / OS files
+# ====================================
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# ====================================
+# Documentation and config normalization
+# ====================================
+* text=auto eol=lf
 *.js   text eol=lf
 *.ts   text eol=lf
 *.tsx  text eol=lf
-
-# Node & React config files
 *.json text eol=lf
 *.yml  text eol=lf
 *.yaml text eol=lf
 *.md   text eol=lf
-*.env  text eol=lf
-
-# SQL & migrations
 *.sql  text eol=lf
-
-# Shell scripts
 *.sh   text eol=lf
 
-# Ignore binaries
+# Ignore binary assets
 *.png  binary
 *.jpg  binary
 *.jpeg binary
