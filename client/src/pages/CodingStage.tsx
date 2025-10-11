@@ -49,6 +49,9 @@ interface CodingProblem {
     expectedOutput: string;
   }>;
   hint?: string;
+  problemId?: number;
+  predefinedTemplates?: Record<string, string>;
+  signaturePlaceholder?: Record<string, string>;
 }
 
 interface TestCaseResult {
@@ -111,7 +114,7 @@ export default function CodingStage() {
   const [problem, setProblem] = useState<CodingProblem | null>(null);
   const [questionId, setQuestionId] = useState<number | null>(null);
   const [language, setLanguage] = useState(LANGUAGES[0].id);
-  const [code, setCode] = useState(LANGUAGES[0].defaultCode);
+  const [code, setCode] = useState(''); // Initialize empty, will be set by useEffect
   const [testResults, setTestResults] = useState<TestCaseResult[]>([]);
   const [isRunning, setIsRunning] = useState(false);
   const [selectedTestCase, setSelectedTestCase] = useState(0);
@@ -149,14 +152,15 @@ export default function CodingStage() {
   // Fetch coding question
   useEffect(() => {
     async function fetchCodingQuestion() {
+      console.log('🔍 Fetching coding question for interview:', interviewId);
       setLoading(true);
       setError('');
       try {
         const questionsRes = await apiRequest('GET', `/api/interviews/${interviewId}/questions`);
         const questions: any[] = await questionsRes.json();
-        console.log('Fetched questions:', questions);
+        console.log('📋 Fetched questions:', questions);
         const codingQ: any = questions.find((q: any) => q.stage === 2 && q.type === 'coding');
-        console.log('Coding question:', codingQ);
+        console.log('🎯 Coding question found:', codingQ);
         if (codingQ) {
           let parsedQuestion;
           try {
@@ -166,55 +170,92 @@ export default function CodingStage() {
           } catch {
             parsedQuestion = codingQ.question;
           }
+          
           // Merge testCases if not present in parsedQuestion
           if (!parsedQuestion.testCases && Array.isArray(codingQ.testCases)) {
             parsedQuestion.testCases = codingQ.testCases;
           }
-          console.log('Parsed coding problem:', parsedQuestion);
-          setProblem(parsedQuestion);
+          
+          // If this is a database problem (has problemId), fetch the full problem details
+          if (parsedQuestion.problemId) {
+            try {
+              const problemRes = await apiRequest('GET', `/api/coding-problems/${parsedQuestion.problemId}`);
+              const fullProblem = await problemRes.json();
+              
+              // Merge the full problem details with parsed question
+              const combinedProblem = {
+                title: fullProblem.problemTitle || parsedQuestion.title,
+                description: fullProblem.problemDescription || parsedQuestion.description,
+                difficulty: fullProblem.problemHardnessLevel || parsedQuestion.difficulty || 'medium',
+                constraints: fullProblem.constraints || parsedQuestion.constraints || [],
+                examples: fullProblem.examples || parsedQuestion.examples || [],
+                testCases: fullProblem.testCases || parsedQuestion.testCases || [],
+                predefinedTemplates: fullProblem.predefinedTemplates || {},
+                signaturePlaceholder: fullProblem.signaturePlaceholder || {},
+                problemId: fullProblem.id
+              };
+              
+              console.log('✅ Using database problem with templates:', combinedProblem);
+              setProblem(combinedProblem);
+            } catch (dbError) {
+              console.error('⚠️ Failed to fetch full problem details, using parsed question:', dbError);
+              setProblem(parsedQuestion);
+            }
+          } else {
+            // Legacy AI-generated problem
+            console.log('🔄 Using legacy AI-generated problem:', parsedQuestion);
+            setProblem(parsedQuestion);
+          }
+          
           setQuestionId(codingQ.id);
         } else {
-          setError('No coding question found for this interview.');
-          console.error('No coding question found for this interview.');
+          // More detailed error message
+          const allQuestionTypes = questions.map(q => ({ id: q.id, stage: q.stage, type: q.type }));
+          setError(`No coding question found for this interview. Available questions: ${JSON.stringify(allQuestionTypes)}`);
+          console.error('❌ No coding question found for this interview. Available questions:', allQuestionTypes);
         }
       } catch (e) {
-        setError('Failed to load coding question.');
+        setError(`Failed to load coding question: ${e instanceof Error ? e.message : String(e)}`);
+        console.error('💥 Failed to load coding question:', e);
       } finally {
         setLoading(false);
       }
     }
-    fetchCodingQuestion();
+    if (interviewId) {
+      fetchCodingQuestion();
+    }
   }, [interviewId]);
 
-  // Set starter code on language or problem change (fetch from backend)
+  // Set starter code on language or problem change (prioritize database templates as placeholders)
   useEffect(() => {
-    async function fetchSignature() {
+    function setStarterCode() {
       if (!problem) return;
       setSignatureLoading(true);
       setTestResults([]);
+      
       try {
-        const langLabel = LANGUAGE_LABELS[language] || language;
-        const res = await apiRequest('POST', '/api/generate-signature', {
-          problemDescription: `${problem.title}\n${problem.description}\nConstraints: ${problem.constraints?.join(' ') || ''}`,
-          language: langLabel,
-        });
-        const data = await res.json();
-        if (data.signature && typeof data.signature === 'string') {
-          setCode(data.signature);
+        // PRIORITY 1: Use predefined templates from database as primary placeholders
+        if (problem.predefinedTemplates && problem.predefinedTemplates[language]) {
+          console.log('Using database template as placeholder for language:', language);
+          // Replace \n with actual newlines in the template
+          const template = problem.predefinedTemplates[language].replace(/\\n/g, '\n');
+          setCode(template);
         } else {
-          // fallback to static defaultCode
+          // PRIORITY 2: Fallback to default language template if no database template exists
+          console.log('Using fallback template for language:', language);
           const lang = LANGUAGES.find(l => l.id === language);
           setCode(lang ? lang.defaultCode : '');
         }
       } catch (e) {
-        // fallback to static defaultCode
+        console.error('Error setting starter code:', e);
+        // Final fallback to static defaultCode
         const lang = LANGUAGES.find(l => l.id === language);
         setCode(lang ? lang.defaultCode : '');
       } finally {
         setSignatureLoading(false);
       }
     }
-    fetchSignature();
+    setStarterCode();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [language, problem]);
 
@@ -228,6 +269,18 @@ export default function CodingStage() {
     window.addEventListener('keydown', handleKey);
     return () => window.removeEventListener('keydown', handleKey);
   });
+
+  // Get dynamic placeholder based on database templates or fallback
+  const getPlaceholder = useCallback(() => {
+    if (problem?.predefinedTemplates && problem.predefinedTemplates[language]) {
+      // Use database template as placeholder
+      return problem.predefinedTemplates[language].replace(/\\n/g, '\n');
+    } else {
+      // Fallback to default language placeholder
+      const lang = LANGUAGES.find(l => l.id === language);
+      return lang ? lang.defaultCode : '';
+    }
+  }, [language, problem]);
 
   // Use AI-generated test cases only
   const aiTestCases = (problem?.testCases || []).map((tc, i) => ({ ...tc, id: i + 1 }));
@@ -260,7 +313,7 @@ export default function CodingStage() {
       console.log('Test case results from backend:', result.testCaseResults);
       const newResults = result.testCaseResults.map((r: any, i: number) => ({
         input: aiTestCases[i].input,
-        expectedOutput: aiTestCases[i].expectedOutput,
+        expectedOutput: aiTestCases[i].expectedOutput, // Use the original expected output from test cases
         userOutput: r.userOutput ?? r.actualOutput ?? r.actual ?? '', // Prefer userOutput, fallback to actualOutput/actual
         passed: r.passed,
         diff: r.diff,
@@ -305,7 +358,7 @@ export default function CodingStage() {
       console.log('Test case results from backend:', result.testCaseResults);
       const newResults = result.testCaseResults.map((r: any, i: number) => ({
         input: aiTestCases[i].input,
-        expectedOutput: aiTestCases[i].expectedOutput,
+        expectedOutput: aiTestCases[i].expectedOutput, // Use the original expected output from test cases
         userOutput: r.userOutput ?? r.actualOutput ?? r.actual ?? '', // Prefer userOutput, fallback to actualOutput/actual
         passed: r.passed,
         diff: r.diff,
@@ -317,6 +370,14 @@ export default function CodingStage() {
       setRuntimeMs(result.time ? Math.round(parseFloat(result.time) * 1000) : 0);
       if (questionId) {
         try {
+          console.log('📤 Submitting coding response to backend');
+          console.log('🗺 Coding evaluation data:', {
+            testCaseResults: result.testCaseResults?.length || 0,
+            passedTests: result.testCaseResults?.filter((tc: any) => tc.passed).length || 0,
+            totalTests: result.testCaseResults?.length || 0,
+            resultKeys: Object.keys(result || {})
+          });
+          
           // Submit the coding response - backend will automatically handle stage progression
           await apiRequest('POST', '/api/responses', {
             questionId,
@@ -325,15 +386,19 @@ export default function CodingStage() {
             codingEvaluation: result // Pass the evaluation results
           });
           
+          console.log('✅ Coding response submitted successfully');
+          
           // Invalidate React Query cache to ensure fresh interview data is fetched
           queryClient.invalidateQueries({ queryKey: ['/api/interviews', parseInt(interviewId!)] });
           queryClient.invalidateQueries({ queryKey: ['/api/interviews', parseInt(interviewId!), 'questions'] });
           
-          // Small delay to ensure backend processing is complete
-          await new Promise(resolve => setTimeout(resolve, 500));
+          // Longer delay to ensure backend processing is complete before navigation
+          console.log('⏳ Waiting for backend stage progression to complete...');
+          await new Promise(resolve => setTimeout(resolve, 2000));
           
+          console.log('🧿 Navigating back to interview page');
           // Navigate back to interview with a parameter to indicate we're coming from coding
-          navigate(`/interview/${interviewId}?from=coding`);
+          navigate(`/interview/${interviewId}?from=coding&stage=3`);
         } catch (err) {
           setErrorOutput('Failed to submit coding solution. Please try again.');
           console.error('Coding submission error:', err);
@@ -358,10 +423,18 @@ export default function CodingStage() {
   }
 
   const handleReset = useCallback(() => {
-    const lang = LANGUAGES.find(l => l.id === language);
-    setCode(lang ? lang.defaultCode : '');
+    // PRIORITY 1: Use database template as primary placeholder, otherwise fallback to default
+    if (problem?.predefinedTemplates && problem.predefinedTemplates[language]) {
+      console.log('Resetting to database template placeholder for language:', language);
+      const template = problem.predefinedTemplates[language].replace(/\\n/g, '\n');
+      setCode(template);
+    } else {
+      console.log('Resetting to fallback template for language:', language);
+      const lang = LANGUAGES.find(l => l.id === language);
+      setCode(lang ? lang.defaultCode : '');
+    }
     setTestResults([]);
-  }, [language]);
+  }, [language, problem]);
 
   // Progress bar (always 100% for single coding question, but can be dynamic)
   const progress = 100;
@@ -392,11 +465,20 @@ export default function CodingStage() {
         {showLeft && (
           <>
             <h1 className="text-2xl font-bold mb-2 text-gray-900 dark:text-gray-100">{problem.title}</h1>
-            <span className={`inline-block px-2 py-1 rounded text-xs font-bold mb-4 ${problem.difficulty === 'Easy' ? 'bg-green-100 text-green-700' : problem.difficulty === 'Medium' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>{problem.difficulty}</span>
+            <span className={`inline-block px-2 py-1 rounded text-xs font-bold mb-4 ${
+              problem.difficulty?.toLowerCase() === 'easy' ? 'bg-green-100 text-green-700' : 
+              problem.difficulty?.toLowerCase() === 'medium' ? 'bg-yellow-100 text-yellow-700' : 
+              'bg-red-100 text-red-700'
+            }`}>{problem.difficulty || 'Medium'}</span>
             <p className="mb-4 text-gray-800 dark:text-gray-200">{problem.description}</p>
             <h2 className="font-semibold mb-1 text-gray-900 dark:text-gray-100">Constraints</h2>
             <ul className="list-disc list-inside mb-4 text-gray-700 dark:text-gray-300">
-              {problem.constraints.map((c: string, i: number) => <li key={i}>{c}</li>)}
+              {Array.isArray(problem.constraints) ? 
+                problem.constraints.map((c: string, i: number) => <li key={i}>{c}</li>) :
+                typeof problem.constraints === 'string' ? 
+                  (problem.constraints as string).split('\n').map((c: string, i: number) => <li key={i}>{c}</li>) :
+                  <li>No constraints specified</li>
+              }
             </ul>
             <h2 className="font-semibold mb-1 text-gray-900 dark:text-gray-100">Examples</h2>
             {problem.examples.map((ex: any, i: number) => (
@@ -434,6 +516,11 @@ export default function CodingStage() {
             <Button onClick={handleSubmit} disabled={isRunning} variant="default">Submit</Button>
             <Button onClick={handleReset} disabled={isRunning} variant="secondary">Reset</Button>
             <span className="ml-4 text-xs text-gray-500 dark:text-gray-300">Ctrl+Enter: Run &nbsp; Ctrl+S: Submit &nbsp; Ctrl+R: Reset</span>
+            {problem?.predefinedTemplates && problem.predefinedTemplates[language] && (
+              <span className="ml-4 text-xs text-green-600 dark:text-green-400 font-medium">
+                📝 Custom template loaded
+              </span>
+            )}
           </div>
           <div className="flex items-center space-x-4">
             <Button variant="ghost" onClick={() => setDarkMode(v => !v)}>{darkMode ? <Sun /> : <Moon />}</Button>
@@ -499,7 +586,7 @@ export default function CodingStage() {
             </div>
           </div>
         </div>
-        <div className="flex-1 p-6 flex flex-col bg-gray-50 dark:bg-gray-900 transition-colors duration-300">
+        <div className="flex-1 p-6 flex flex-col bg-gray-50 dark:bg-gray-900 transition-colors duration-300 relative">
           <MonacoEditor
             height="400px"
             language={LANGUAGES.find(l => l.id === language)?.monaco || 'python'}
@@ -509,8 +596,24 @@ export default function CodingStage() {
               setCode(v || '');
             }}
             theme={darkMode ? 'vs-dark' : 'light'}
-            options={{ fontSize: 16, minimap: { enabled: false }, wordWrap: 'on', scrollBeyondLastLine: false }}
+            options={{ 
+              fontSize: 16, 
+              minimap: { enabled: false }, 
+              wordWrap: 'on', 
+              scrollBeyondLastLine: false,
+              showFoldingControls: 'always',
+              folding: true,
+              lineNumbers: 'on',
+              autoIndent: 'advanced',
+              formatOnType: true
+            }}
           />
+          {/* Show placeholder hint when editor is empty */}
+          {!code.trim() && (
+            <div className="absolute top-8 left-8 text-gray-400 dark:text-gray-500 pointer-events-none text-sm font-mono whitespace-pre-line z-10 bg-transparent">
+              {getPlaceholder()}
+            </div>
+          )}
           {errorOutput && (
             <div className="bg-red-100 text-red-800 p-3 rounded mb-4 whitespace-pre-wrap">
               <strong>Error/Output:</strong>

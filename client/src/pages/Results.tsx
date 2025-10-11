@@ -348,7 +348,20 @@ export default function Results() {
                               })()}
                             </pre>
                           </div>
-                          <div className="mb-1"><span className="font-medium">Score:</span> {response?.score ?? 'N/A'}</div>
+                          <div className="mb-1">
+                            <span className="font-medium">Score:</span> 
+                            <span className={`ml-2 font-semibold ${
+                              (response?.score ?? 0) >= 80 ? 'text-green-600' : 
+                              (response?.score ?? 0) >= 60 ? 'text-yellow-600' : 'text-red-600'
+                            }`}>
+                              {response?.score ?? 'N/A'}%
+                            </span>
+                            {response?.score === 0 && response?.feedback?.testCaseResults && (
+                              <span className="ml-2 text-xs text-gray-500">
+                                (0 of {response.feedback.testCaseResults.length} test cases passed)
+                              </span>
+                            )}
+                          </div>
                           <div className="text-sm text-gray-600 mb-2"><span className="font-medium">Feedback:</span> {typeof response?.feedback === 'string' ? response.feedback : response?.feedback?.feedback || <span className="text-gray-400">No feedback</span>}</div>
                           {/* Show test case results if available */}
                           {response?.feedback?.testCaseResults && Array.isArray(response.feedback.testCaseResults) && response.feedback.testCaseResults.length > 0 && (
@@ -370,8 +383,8 @@ export default function Results() {
                                       <tr key={i} className={tc.passed ? 'bg-green-50' : 'bg-red-50'}>
                                         <td className="px-2 py-1 border text-center">{i + 1}</td>
                                         <td className="px-2 py-1 border font-mono whitespace-pre-wrap">{tc.input}</td>
-                                        <td className="px-2 py-1 border font-mono whitespace-pre-wrap">{tc.output}</td>
-                                        <td className="px-2 py-1 border font-mono whitespace-pre-wrap">{tc.expectedOutput}</td>
+                                        <td className="px-2 py-1 border font-mono whitespace-pre-wrap">{tc.userOutput || tc.actualOutput || tc.actual || tc.output || 'No output'}</td>
+                                        <td className="px-2 py-1 border font-mono whitespace-pre-wrap">{tc.expectedOutput || tc.expected}</td>
                                         <td className="px-2 py-1 border text-center font-bold">{tc.passed ? <span className="text-green-600">✔</span> : <span className="text-red-600">✗</span>}</td>
                                       </tr>
                                     ))}

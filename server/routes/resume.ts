@@ -2,7 +2,7 @@ import express from 'express';
 import multer from 'multer';
 import path from 'path';
 import { storage } from '../storage';
-import { generateCodingQuestion, generateVoiceQuestion, generateMCQQuestions } from '../services/gemini';
+import { generateVoiceQuestion, generateMCQQuestions } from '../services/gemini';
 import { Request } from 'express';
 import fs from 'fs';
 import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf.mjs';
@@ -11,6 +11,25 @@ import { analyzeResumeWithGemini } from '../services/gemini';
 import { technicalRoles } from '../../shared/schema';
 import Fuse from 'fuse.js';
 import { verifyFirebaseToken } from '../services/firebase';
+import { db } from '../db';
+import { codingProblems } from '../../shared/schema';
+import { eq } from 'drizzle-orm';
+
+// Helper function to map experience level to database difficulty
+function mapExperienceToDifficulty(experienceLevel: string): string {
+  const expLevel = experienceLevel.toLowerCase();
+  console.log('Mapping experience level:', experienceLevel, 'to lowercase:', expLevel);
+  if (expLevel.includes('beginner') || expLevel.includes('entry') || expLevel.includes('junior')) {
+    console.log('Mapped to Easy');
+    return 'Easy';
+  } else if (expLevel.includes('senior') || expLevel.includes('expert') || expLevel.includes('lead')) {
+    console.log('Mapped to Hard');
+    return 'Hard';
+  } else {
+    console.log('Mapped to Medium (default)');
+    return 'Medium'; // Default for mid-level, intermediate, etc.
+  }
+}
 
 const router = express.Router();
 
@@ -298,24 +317,46 @@ router.post('/from-resume', requireAuth, upload.single('resume'), async (req, re
       // Continue with other questions
     }
     
-    // Generate coding question
+    // Generate coding question from database
     try {
-      const codingQ = await generateCodingQuestion(ollamaExtracted.role, ollamaExtracted.experienceLevel);
-      if (codingQ) {
+      // Fetch coding problem from database for ALL roles (not just technical)
+      const problems = await db.select().from(codingProblems)
+        .where(eq(codingProblems.problemHardnessLevel, mapExperienceToDifficulty(ollamaExtracted.experienceLevel!)))
+        .limit(5);
+      
+      let selectedProblem = null;
+      if (problems.length === 0) {
+        // Fallback to any available problem if no match found
+        const fallbackProblems = await db.select().from(codingProblems).limit(5);
+        selectedProblem = fallbackProblems.length > 0 ? fallbackProblems[Math.floor(Math.random() * fallbackProblems.length)] : null;
+      } else {
+        // Select a random problem from the matching hardness level
+        selectedProblem = problems[Math.floor(Math.random() * problems.length)];
+      }
+      
+      if (selectedProblem) {
         await storage.createQuestion({
           interviewId: interview.id,
           stage: 2,
           type: 'coding',
-          question: JSON.stringify(codingQ),
-          testCases: codingQ.testCases || [],
-          aiGenerated: true,
+          question: JSON.stringify({
+            title: selectedProblem.problemTitle,
+            description: selectedProblem.problemDescription,
+            constraints: selectedProblem.constraints,
+            examples: selectedProblem.examples,
+            problemId: selectedProblem.id
+          }),
+          testCases: selectedProblem.testCases || [],
+          aiGenerated: false,
           options: [],
           correctAnswer: '',
         });
-        console.log('Coding question created');
+        console.log('Database coding question created:', selectedProblem.problemTitle);
+      } else {
+        console.warn('No coding problems found in database');
       }
     } catch (codingError) {
-      console.error('Failed to generate coding question:', codingError);
+      console.error('Failed to create coding question from database:', codingError);
       // Continue with voice question
     }
     

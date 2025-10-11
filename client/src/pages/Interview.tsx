@@ -13,20 +13,238 @@ import {
   Brain,
   Code,
   Mic,
+  User,
   ArrowRight,
   Square,
   RefreshCw,
   Clock,
   AlertTriangle
 } from "lucide-react";
+import { Avatar, AvatarImage, AvatarFallback } from "../components/ui/avatar";
 import { useInterviewQuery, useQuestionsQuery, useResponsesQuery } from "../hooks/useInterview";
 import { useInterview } from "../hooks/useInterview";
 import { useAuth } from "../hooks/useAuth";
 import Header from "../components/Header";
 import VoiceRecorder from "../components/VoiceRecorder";
+import AIInterviewerAvatar from "../components/AIInterviewerAvatar";
 import { useToast } from "../hooks/use-toast";
 import { useTimer } from "../hooks/useTimer";
 import type { Interview, Question, Response } from "../types/interview";
+
+// Enhanced Question Renderer Component for MCQ formatting
+interface QuestionRendererProps {
+  question: string;
+  onFixQuestion?: () => void;
+}
+
+const QuestionRenderer: React.FC<QuestionRendererProps> = ({ question, onFixQuestion }) => {
+  // Enhanced detection for code snippets - more comprehensive patterns
+  const hasCodeBlock = /```[\s\S]*?```|`[^`\n]+`|function\s+\w+\(|class\s+\w+|def\s+\w+\(|var\s+\w+|let\s+\w+|const\s+\w+|<[\w\s="'-]+>|console\.|print\(|System\.out|import\s+\w+|#include|public\s+class|private\s+\w+|for\s+\w+\s+in|if\s+\w+|while\s+\w+|return\s+|range\(/.test(question);
+  
+  // Check if question mentions code but doesn't show it properly
+  const mentionsCode = /code snippet|following code|python code|javascript code|java code|c\+\+ code|consider.*code/i.test(question);
+  const hasVisibleCode = /```|`\w+`|def |function |class |import |#include/.test(question);
+  
+  if (mentionsCode && !hasVisibleCode) {
+    // Try to extract code from improperly formatted questions
+    const codeExtractionPatterns = [
+      // Try to find code after "code:" or similar
+      /(?:code|snippet|following)\s*:?\s*([\s\S]*?)(?=\n\s*(?:What|Choose|Select|A\.|B\.|C\.|D\.|Options?|Answer)|$)/i,
+      // Try to find indented code blocks
+      /((?:^\s{2,}.*\n?)+)/gm,
+      // Try to find code patterns without markers
+      /((?:def\s+\w+|function\s+\w+|class\s+\w+|for\s+\w+|if\s+\w+|while\s+\w+)[\s\S]*?)(?=\n\s*(?:What|Choose|Select|A\.|B\.|C\.|D\.|Options?|Answer)|$)/i
+    ];
+    
+    let extractedCode = null;
+    for (const pattern of codeExtractionPatterns) {
+      const match = question.match(pattern);
+      if (match && match[1] && match[1].trim().length > 10) {
+        extractedCode = match[1].trim();
+        break;
+      }
+    }
+    
+    if (extractedCode) {
+      // Found code! Display it properly
+      const questionWithoutCode = question.replace(extractedCode, '').trim();
+      return (
+        <div className="space-y-4">
+          <div className="text-gray-700 text-lg leading-relaxed space-y-2">
+            {questionWithoutCode.split('\n').map((line, index) => (
+              <div key={index} className={line.trim() ? '' : 'h-2'}>
+                {line || '\u00A0'}
+              </div>
+            ))}
+          </div>
+          
+          {/* Display the extracted code */}
+          <div className="bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-sm my-4 border-l-4 border-green-500 shadow-lg">
+            <div className="flex items-center mb-2 pb-2 border-b border-gray-700">
+              <div className="flex space-x-2">
+                <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+                <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
+                <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+              </div>
+              <span className="ml-4 text-gray-400 text-xs font-medium">EXTRACTED CODE</span>
+            </div>
+            <pre className="whitespace-pre-wrap overflow-auto">
+              <code>{extractedCode}</code>
+            </pre>
+          </div>
+          
+          <div className="flex items-center text-sm text-blue-600 bg-blue-50 px-4 py-3 rounded-lg border border-blue-200">
+            <Code className="h-4 w-4 mr-2" />
+            <span className="font-medium">Code extracted and formatted automatically - please verify it looks correct!</span>
+          </div>
+        </div>
+      );
+    }
+    // Question mentions code but code is not visible - show warning
+    return (
+      <div className="space-y-4">
+        <div className="text-gray-700 text-lg leading-relaxed space-y-2">
+          {question.split('\n').map((line, index) => (
+            <div key={index} className={line.trim() ? '' : 'h-2'}>
+              {line || '\u00A0'}
+            </div>
+          ))}
+        </div>
+        <div className="flex items-center text-sm text-red-600 bg-red-50 px-4 py-3 rounded-lg border border-red-200">
+          <AlertTriangle className="h-4 w-4 mr-2" />
+          <div className="flex-1">
+            <span className="font-medium">Warning: This question references code that may not be displayed properly.</span>
+            <p className="text-xs mt-1">The question mentions code but no code snippet is visible. This might be a formatting issue.</p>
+          </div>
+          {onFixQuestion && (
+            <Button 
+              onClick={onFixQuestion}
+              variant="outline" 
+              size="sm" 
+              className="ml-2 text-red-600 border-red-300 hover:bg-red-100"
+            >
+              <RefreshCw className="h-3 w-3 mr-1" />
+              Fix Question
+            </Button>
+          )}
+        </div>
+      </div>
+    );
+  }
+  
+  if (!hasCodeBlock) {
+    // Simple text question - display with better formatting
+    return (
+      <div className="text-gray-700 text-lg leading-relaxed space-y-2">
+        {question.split('\n').map((line, index) => (
+          <div key={index} className={line.trim() ? '' : 'h-2'}>
+            {line || '\u00A0'}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  // Process question with enhanced code formatting
+  const processQuestionWithCode = (text: string): JSX.Element[] => {
+    const elements: JSX.Element[] = [];
+    let currentIndex = 0;
+    let elementKey = 0;
+
+    // Simplified regex for code detection
+    const codeBlockRegex = /(```[\s\S]*?```|`[^`\n]+`)/g;
+    let match: RegExpExecArray | null;
+    
+    while ((match = codeBlockRegex.exec(text)) !== null) {
+      // Add text before code block
+      if (match.index > currentIndex) {
+        const beforeText = text.slice(currentIndex, match.index);
+        if (beforeText.trim()) {
+          elements.push(
+            <div key={elementKey++} className="text-gray-700 mb-2">
+              {beforeText.split('\n').map((line, idx) => (
+                <div key={idx} className={line.trim() ? '' : 'h-2'}>
+                  {line || '\u00A0'}
+                </div>
+              ))}
+            </div>
+          );
+        }
+      }
+      
+      // Add formatted code block
+      const codeText = match[1];
+      const isMultiLine = codeText.includes('\n') || codeText.startsWith('```');
+      const cleanCode = codeText.replace(/```[\w]*\n?/g, '').replace(/\n```$/g, '').replace(/^`|`$/g, '').trim();
+      
+      if (isMultiLine) {
+        // Multi-line code block
+        elements.push(
+          <div key={elementKey++} className="bg-gray-900 text-green-400 p-4 rounded-lg font-mono text-sm my-4 border-l-4 border-green-500 shadow-lg">
+            <div className="flex items-center mb-2 pb-2 border-b border-gray-700">
+              <div className="flex space-x-2">
+                <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+                <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
+                <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+              </div>
+              <span className="ml-4 text-gray-400 text-xs font-medium">CODE BLOCK</span>
+            </div>
+            <pre className="whitespace-pre-wrap overflow-auto">
+              <code>{cleanCode}</code>
+            </pre>
+          </div>
+        );
+      } else {
+        // Inline code - styled differently
+        elements.push(
+          <span key={elementKey++} className="bg-gray-100 text-gray-800 px-3 py-1.5 rounded-md font-mono text-sm border border-gray-300 mx-1 inline-flex items-center">
+            <Code className="w-3 h-3 mr-1 text-blue-600" />
+            {cleanCode}
+          </span>
+        );
+      }
+      
+      currentIndex = match.index + match[0].length;
+    }
+    
+    // Add remaining text
+    if (currentIndex < text.length) {
+      const remainingText = text.slice(currentIndex);
+      if (remainingText.trim()) {
+        elements.push(
+          <div key={elementKey++} className="text-gray-700">
+            {remainingText.split('\n').map((line, idx) => (
+              <div key={idx} className={line.trim() ? '' : 'h-2'}>
+                {line || '\u00A0'}
+              </div>
+            ))}
+          </div>
+        );
+      }
+    }
+    
+    return elements;
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="text-lg leading-relaxed">
+        {processQuestionWithCode(question)}
+      </div>
+      <div className="flex items-center text-sm text-blue-600 bg-blue-50 px-4 py-3 rounded-lg border border-blue-200">
+        <Code className="h-4 w-4 mr-2" />
+        <span className="font-medium">This question contains code - take your time to read it carefully!</span>
+      </div>
+      {/* Debug info for development - remove in production */}
+      {process.env.NODE_ENV === 'development' && (
+        <details className="text-xs text-gray-500 border border-gray-200 rounded p-2">
+          <summary className="cursor-pointer">Debug: Raw Question Data</summary>
+          <pre className="mt-2 whitespace-pre-wrap">{JSON.stringify(question, null, 2)}</pre>
+        </details>
+      )}
+    </div>
+  );
+};
 
 // Type guard for Interview
 function isInterview(obj: any): obj is Interview {
@@ -97,6 +315,14 @@ export default function Interview() {
   const [showRefreshButton, setShowRefreshButton] = useState(false);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
 
+  // Camera state for voice stage
+  const [cameraActive, setCameraActive] = useState(false);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
+  const [isRecordingWithCamera, setIsRecordingWithCamera] = useState(false);
+  const [cameraAnalysisResults, setCameraAnalysisResults] = useState<any>(null);
+  const [showCameraResults, setShowCameraResults] = useState(false);
+  const [recordingStartTime, setRecordingStartTime] = useState<number | null>(null);
+
   const maxVoiceQuestions = 5; // Total voice questions including welcome
 
   // Calculate current voice question number (1-based for user display)
@@ -121,6 +347,14 @@ export default function Interview() {
 
   // Refs to prevent duplicate generations
   const isGeneratingRef = useRef(false);
+  const voiceInterviewInitializationRef = useRef(false);
+  const hasSpokenCurrentQuestionRef = useRef(false);
+  // Add refs to prevent race conditions
+  const isStartingRecordingRef = useRef(false);
+  const isStoppingRecordingRef = useRef(false);
+  const isSubmittingVoiceRef = useRef(false);
+  // Add ref to track if we've attempted to generate the first voice question
+  const hasAttemptedFirstQuestionGeneration = useRef(false);
 
   // Derived variables
   const safeQuestions = (Array.isArray(questions) ? questions : []).map((q: any) => ({
@@ -169,11 +403,47 @@ export default function Interview() {
     setTextAnswer("");
     setAudioBlob(null);
     isGeneratingRef.current = false;
+    hasAttemptedFirstQuestionGeneration.current = false; // Reset this flag too
     
     if (typedInterview?.id) {
       localStorage.removeItem(`voice-interview-${typedInterview.id}`);
     }
   }, [typedInterview?.id]);
+
+  // Handle transitions between voice questions
+  useEffect(() => {
+    // When moving to a new voice question (not the first one), we might need to generate it
+    if (currentStage === 3 && voiceInterview.currentQuestionNumber > 1 && !currentQuestion && !isGeneratingRef.current) {
+      // Check if we have the question in our local state
+      const questionIndex = voiceInterview.currentQuestionNumber - 1;
+      const voiceQuestions = Array.isArray(allQuestions) 
+        ? allQuestions.filter((q) => Number(q.stage) === 3)
+        : [];
+      
+      // Sort by creation time to ensure proper order
+      const sortedQuestions = voiceQuestions.sort((a, b) => 
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      );
+      
+      // If we don't have this question yet, we might need to generate it
+      if (questionIndex >= sortedQuestions.length) {
+        console.log('🎤 Need to generate next voice question:', voiceInterview.currentQuestionNumber);
+        // The question should have been generated by handleVoiceSubmit, but if not, we can try to regenerate
+        // This is a fallback mechanism - in normal flow, questions are generated in handleVoiceSubmit
+      }
+    }
+  }, [currentStage, voiceInterview.currentQuestionNumber, currentQuestion, allQuestions]);
+
+  // MAIN VOICE INTERVIEW LOGIC - Generate first question when entering stage 3
+  useEffect(() => {
+    if (currentStage === 3 && !voiceInterview.hasWelcomeQuestion && !isGeneratingRef.current) {
+      console.log('🎤 Generating first voice question');
+      // Call the function that generates the first question
+      setVoiceInterview(prev => ({ ...prev, isGenerating: true }));
+      isGeneratingRef.current = true;
+      generateVoiceQuestion(1, []);
+    }
+  }, [currentStage, voiceInterview.hasWelcomeQuestion]);
 
   // Memoize completeInterview to avoid dependency issues
   const completeInterview = useCallback(async () => {
@@ -243,15 +513,75 @@ export default function Interview() {
     }
   };
 
+  // Function to fix broken MCQ questions
+  const handleFixQuestion = async () => {
+    if (!currentQuestion || currentQuestion.type !== 'mcq') {
+      toast({
+        title: "Error",
+        description: "No MCQ question found to fix.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const token = await getToken();
+      const response = await fetch(`/api/questions/${currentQuestion.id}/fix`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fix question');
+      }
+
+      const result = await response.json();
+
+      if (result.wasFixed) {
+        toast({
+          title: "Question Fixed!",
+          description: "A new question has been generated to replace the broken one.",
+        });
+        
+        // Force refetch questions to get the updated question
+        if (typeof refetchQuestions === 'function') {
+          await refetchQuestions();
+        }
+      } else {
+        toast({
+          title: "No Fix Needed",
+          description: "The question appears to be formatted correctly.",
+        });
+      }
+    } catch (error) {
+      console.error('Error fixing question:', error);
+      toast({
+        title: "Error",
+        description: "Failed to fix the question. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   // Function to generate voice question
   const generateVoiceQuestion = useCallback(async (questionNumber: number, qaHistory: Array<{question: string, answer: string}>) => {
-    if (!typedInterview?.id || isGeneratingRef.current) {
-      console.log('⚠️ Skipping question generation - already in progress or no interview');
+    if (!typedInterview?.id) {
+      console.log('⚠️ Skipping question generation - no interview');
+      return null;
+    }
+
+    // Prevent duplicate generation with a simpler approach
+    if (isGeneratingRef.current) {
+      console.log('⚠️ Skipping question generation - already in progress');
       return null;
     }
 
     console.log('🎤 Generating voice question:', { questionNumber, qaHistory: qaHistory.length });
     
+    // Set flags immediately
     isGeneratingRef.current = true;
     setVoiceInterview(prev => ({ ...prev, isGenerating: true }));
 
@@ -279,6 +609,20 @@ export default function Interview() {
       });
 
       if (!res.ok) {
+        // Handle specific case where welcome question might already exist
+        if (questionNumber === 1 && res.status === 409) {
+          console.log('⚠️ Welcome question already exists on server, fetching existing questions');
+          // Refresh our local question list
+          if (typeof refetchQuestions === 'function') {
+            await refetchQuestions();
+          }
+          // Set to show first question
+          setVoiceInterview(prev => ({
+            ...prev,
+            currentQuestionNumber: 1
+          }));
+          return null;
+        }
         throw new Error(`Failed to generate voice question: ${res.status}`);
       }
 
@@ -314,10 +658,160 @@ export default function Interview() {
       });
       return null;
     } finally {
+      // Always reset flags
       isGeneratingRef.current = false;
       setVoiceInterview(prev => ({ ...prev, isGenerating: false }));
     }
-  }, [typedInterview?.id, getToken, toast]);
+  }, [typedInterview?.id, getToken, toast, refetchQuestions]);
+
+  // Camera functions for voice stage
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      setCameraStream(stream);
+      setCameraActive(true);
+    } catch (error) {
+      console.error('Error accessing camera:', error);
+      toast({
+        title: "Camera Error",
+        description: "Could not access your camera. Please check permissions.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const stopCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+      setCameraStream(null);
+    }
+    setCameraActive(false);
+  };
+
+  const startRecordingWithCamera = async () => {
+    // Prevent multiple simultaneous calls
+    if (isStartingRecordingRef.current) {
+      console.log('⚠️ Start recording already in progress');
+      return;
+    }
+    
+    if (!typedInterview?.id) return;
+    
+    try {
+      isStartingRecordingRef.current = true;
+      
+      // Start camera if not already active
+      if (!cameraActive) {
+        await startCamera();
+      }
+      
+      // Set recording start time
+      setRecordingStartTime(Date.now());
+      
+      // Start recording with camera
+      const token = await getToken();
+      const response = await fetch(`/api/interviews/${typedInterview.id}/voice/start`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.message || `Failed to start recording: ${response.status}`);
+      }
+      
+      setIsRecordingWithCamera(true);
+      toast({
+        title: "Recording Started",
+        description: "Camera and microphone recording activated. Please speak for at least 10 seconds for accurate analysis.",
+      });
+    } catch (error: any) {
+      console.error('Error starting camera recording:', error);
+      toast({
+        title: "Recording Error",
+        description: `Failed to start camera recording: ${error.message || error.toString() || 'Unknown error'}`,
+        variant: "destructive",
+      });
+    } finally {
+      isStartingRecordingRef.current = false;
+    }
+  };
+
+  const stopRecordingWithCamera = async () => {
+    // Prevent multiple simultaneous calls
+    if (isStoppingRecordingRef.current) {
+      console.log('⚠️ Stop recording already in progress');
+      return;
+    }
+    
+    if (!typedInterview?.id) return;
+    
+    // Check if minimum recording time has passed (increased to 10 seconds for better analysis)
+    if (recordingStartTime) {
+      const recordingDuration = Date.now() - recordingStartTime;
+      const minRecordingTime = 10000; // Increased to 10 seconds for reliable analysis
+      
+      if (recordingDuration < minRecordingTime) {
+        const remainingTime = Math.ceil((minRecordingTime - recordingDuration) / 1000);
+        toast({
+          title: "Recording Too Short",
+          description: `Please continue recording for at least ${remainingTime} more seconds for accurate analysis. Recommended: 15+ seconds.`,
+          variant: "destructive",
+        });
+        return;
+      }
+    }
+    
+    try {
+      isStoppingRecordingRef.current = true;
+      
+      // Show loading state
+      setIsSubmitting(true);
+      
+      // Stop recording with camera
+      const token = await getToken();
+      const response = await fetch(`/api/interviews/${typedInterview.id}/voice/stop`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to stop recording');
+      }
+      
+      setCameraAnalysisResults(data);
+      setShowCameraResults(true);
+      setIsRecordingWithCamera(false);
+      setRecordingStartTime(null); // Reset recording start time
+      
+      // Stop camera stream
+      stopCamera();
+      
+      toast({
+        title: "Recording Stopped",
+        description: "Analysis complete. Results available.",
+      });
+    } catch (error: any) {
+      console.error('Error stopping camera recording:', error);
+      toast({
+        title: "Recording Error",
+        description: `Failed to stop camera recording: ${error.message || 'Unknown error'}`,
+        variant: "destructive",
+      });
+    } finally {
+      isStoppingRecordingRef.current = false;
+      setIsSubmitting(false);
+    }
+  };
 
   // All useEffects at the top
   useEffect(() => {
@@ -346,45 +840,38 @@ export default function Interview() {
     });
 
     try {
-      const isTechnical = technicalRoles.some(role =>
-        typedInterview && typedInterview.role ? normalizeRole(typedInterview.role).includes(normalizeRole(role)) : false
-      );
-
-      if (nextStage === 2 && !isTechnical) {
-        await updateInterviewMutation.mutateAsync({
-          id: typedInterview?.id ?? 0,
-          data: { currentStage: 3 }
-        });
-        setCurrentQuestionIndex(0);
-        resetVoiceInterviewState();
-        // Navigate after a short delay to avoid race conditions
-        setTimeout(() => {
-          navigate(`/interview/${typedInterview?.id}`);
-          transitioningRef.current = false;
-        }, 100);
-      } else if (nextStage === 2) {
-        await updateInterviewMutation.mutateAsync({
+      // Include coding stage for all roles
+      if (nextStage === 2) {
+        // Reset question index immediately to prevent UI flicker
+        setCurrentQuestionIndex(-1); // Set to -1 to indicate transition state
+        // Wait for the interview to be updated before navigating
+        const updatedInterview = await updateInterviewMutation.mutateAsync({
           id: typedInterview?.id ?? 0,
           data: { currentStage: nextStage }
         });
-        setCurrentQuestionIndex(0);
-        // Navigate after a short delay to avoid race conditions
-        setTimeout(() => {
-          navigate(`/interview/${typedInterview?.id}/coding`);
-          transitioningRef.current = false;
-        }, 100);
+        // Force refetch to ensure we have the latest data
+        if (typeof refetch === 'function') {
+          await refetch();
+        }
+        // Navigate to coding stage
+        navigate(`/interview/${typedInterview?.id}/coding`);
+        transitioningRef.current = false;
       } else if (nextStage === 3) {
-        await updateInterviewMutation.mutateAsync({
+        // Reset question index immediately to prevent UI flicker
+        setCurrentQuestionIndex(-1); // Set to -1 to indicate transition state
+        // Wait for the interview to be updated before navigating
+        const updatedInterview = await updateInterviewMutation.mutateAsync({
           id: typedInterview?.id ?? 0,
           data: { currentStage: nextStage }
         });
-        setCurrentQuestionIndex(0);
         resetVoiceInterviewState();
-        // Navigate after a short delay to avoid race conditions
-        setTimeout(() => {
-          navigate(`/interview/${typedInterview?.id}`);
-          transitioningRef.current = false;
-        }, 100);
+        // Force refetch to ensure we have the latest data
+        if (typeof refetch === 'function') {
+          await refetch();
+        }
+        // Navigate to voice interview stage
+        navigate(`/interview/${typedInterview?.id}`);
+        transitioningRef.current = false;
       } else {
         console.log('🏁 COMPLETING INTERVIEW - nextStage > 3 or already at final stage');
         await completeInterview();
@@ -433,6 +920,7 @@ export default function Interview() {
       if (currentQuestionIndex < questionsInStage.length - 1) {
         setCurrentQuestionIndex(prev => prev + 1);
       } else {
+        // For the last question, navigate immediately to prevent UI flicker
         void moveToNextStage();
       }
 
@@ -440,7 +928,7 @@ export default function Interview() {
       submitResponseMutation.mutate(
         { questionId: qid, answer: ans },
         {
-          onError: (error) => {
+          onError: (error: any) => {
             console.error('Background auto-submit failed:', error);
             toast({
               title: "Warning",
@@ -467,6 +955,7 @@ export default function Interview() {
       if (currentQuestionIndex < questionsInStage.length - 1) {
         setCurrentQuestionIndex(prev => prev + 1);
       } else {
+        // For the last question, navigate immediately to prevent UI flicker
         void moveToNextStage();
       }
 
@@ -474,7 +963,7 @@ export default function Interview() {
       submitResponseMutation.mutate(
         { questionId: qid, answer: "Question skipped due to time limit" },
         {
-          onError: (error) => {
+          onError: (error: any) => {
             console.error('Background skip submission failed:', error);
             toast({
               title: "Warning",
@@ -499,30 +988,48 @@ export default function Interview() {
   useEffect(() => {
     if (questions && Array.isArray(questions)) {
       setAllQuestions(questions);
-      // Only reset question index if questions changed significantly
-      if (questions.length > 0 && currentStage !== 3) {
+      // Only reset question index if questions changed significantly and we're not in transition
+      if (questions.length > 0 && currentStage !== 3 && currentQuestionIndex !== -1) {
         setCurrentQuestionIndex(0);
       }
     } else {
       // Clear stale data if no questions exist
       setAllQuestions([]);
-      if (currentStage !== 3) {
+      if (currentStage !== 3 && currentQuestionIndex !== -1) {
         setCurrentQuestionIndex(0);
       }
     }
   }, [questions, currentStage]);
 
   useEffect(() => {
-    if (typedInterview && typedInterview.currentStage === 2 && !transitioningRef.current) {
+    // Check if we're coming from coding stage to prevent redirect loop
+    const urlParams = new URLSearchParams(window.location.search);
+    const fromCoding = urlParams.get('from') === 'coding';
+    
+    console.log('🔍 Stage redirect check:', {
+      typedInterview: typedInterview,
+      currentStage: typedInterview?.currentStage,
+      fromCoding: fromCoding,
+      transitioningRef: transitioningRef.current
+    });
+    
+    // Only redirect if we're not in a transition state
+    if (typedInterview && typedInterview.currentStage === 2 && !transitioningRef.current && !fromCoding && currentQuestionIndex !== -1) {
       const currentPath = window.location.pathname;
       const isOnCodingPage = currentPath.includes('/coding');
+      
+      console.log('🔄 Redirecting to coding stage:', {
+        currentPath: currentPath,
+        isOnCodingPage: isOnCodingPage
+      });
 
-      // Only redirect if we're NOT already on the coding page
+      // Only redirect if we're NOT already on the coding page and NOT coming from coding
       if (!isOnCodingPage) {
+        // Navigate immediately to coding stage
         navigate(`/interview/${typedInterview.id}/coding`);
       }
     }
-  }, [typedInterview, navigate]);
+  }, [typedInterview, navigate, currentQuestionIndex]);
 
   useEffect(() => {
     if (typedInterview?.status === 'completed') {
@@ -539,6 +1046,13 @@ export default function Interview() {
         window.speechSynthesis.cancel();
         setIsSpeaking(false);
       }
+      // Reset all refs when component unmounts
+      isGeneratingRef.current = false;
+      voiceInterviewInitializationRef.current = false;
+      hasSpokenCurrentQuestionRef.current = false;
+      isStartingRecordingRef.current = false;
+      isStoppingRecordingRef.current = false;
+      isSubmittingVoiceRef.current = false;
     };
   }, [typedInterview?.id]);
 
@@ -556,6 +1070,7 @@ export default function Interview() {
         }
       }
     };
+
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
   }, [typedInterview?.status, refetchQuestions, refetch, typedInterview?.currentStage]);
@@ -566,12 +1081,33 @@ export default function Interview() {
     const fromCoding = urlParams.get('from') === 'coding';
 
     if (fromCoding && typedInterview) {
-      // Clear the URL parameter
+      console.log('🔄 Detected navigation from coding stage - forcing data refresh');
+      
+      // Clear the URL parameter immediately
       window.history.replaceState({}, '', window.location.pathname);
 
-      // Force refresh of interview and questions data
-      if (typeof refetch === 'function') refetch();
-      if (typeof refetchQuestions === 'function') refetchQuestions();
+      // Force comprehensive refresh of interview and questions data with longer delay
+      const refreshData = async () => {
+        try {
+          console.log('📊 Refreshing interview data after coding submission');
+          
+          // Use Promise.all to refresh both queries simultaneously
+          await Promise.all([
+            typeof refetch === 'function' ? refetch() : Promise.resolve(),
+            typeof refetchQuestions === 'function' ? refetchQuestions() : Promise.resolve()
+          ]);
+          
+          // Additional delay to ensure all data is properly synced
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          
+          console.log('✅ Data refresh completed');
+        } catch (error) {
+          console.error('❌ Error refreshing data:', error);
+        }
+      };
+      
+      // Add a longer delay to ensure backend processing is fully complete
+      setTimeout(refreshData, 1000);
     }
   }, [typedInterview, refetch, refetchQuestions]);
 
@@ -597,48 +1133,105 @@ export default function Interview() {
   useEffect(() => {
     if (currentStage !== 3) {
       resetVoiceInterviewState();
+      // Reset the flag when leaving voice stage
+      hasAttemptedFirstQuestionGeneration.current = false;
     }
   }, [currentStage, resetVoiceInterviewState]);
 
   // MAIN VOICE INTERVIEW LOGIC - Generate first question when entering stage 3
   useEffect(() => {
-    const initializeVoiceInterview = async () => {
-      console.log('🎤 Voice interview initialization check:', {
-        currentStage,
-        hasQuestions: currentStageQuestions.length > 0,
-        isGenerating: voiceInterview.isGenerating,
-        questionNumber: voiceInterview.currentQuestionNumber
-      });
-
-      // Only initialize if we're in stage 3, have no questions, and haven't generated yet
-      if (currentStage === 3 && 
-          currentStageQuestions.length === 0 && 
-          !voiceInterview.isGenerating &&
-          voiceInterview.currentQuestionNumber === 1) {
+    // Only run if we're in stage 3 and haven't already attempted to generate the first question
+    if (currentStage !== 3) {
+      return;
+    }
+    
+    // Check if we need to generate the first question
+    const shouldGenerateFirstQuestion = 
+      voiceInterview.currentQuestionNumber === 1 && 
+      !voiceInterview.isGenerating && 
+      !isGeneratingRef.current &&
+      !hasAttemptedFirstQuestionGeneration.current;
+    
+    if (shouldGenerateFirstQuestion) {
+      hasAttemptedFirstQuestionGeneration.current = true;
+      
+      const generateFirstQuestion = async () => {
+        // Set generating flags immediately
+        isGeneratingRef.current = true;
+        setVoiceInterview(prev => ({ ...prev, isGenerating: true }));
         
-        console.log('🚨 Initializing voice interview - generating welcome question');
-        await generateVoiceQuestion(1, []);
-      }
-    };
+        try {
+          // Small delay to ensure backend operations complete
+          await new Promise(resolve => setTimeout(resolve, 300));
+          
+          // Force refresh questions from server to ensure we have the latest data
+          if (typeof refetchQuestions === 'function') {
+            await refetchQuestions();
+          }
+          
+          // Wait a bit more for state to update
+          await new Promise(resolve => setTimeout(resolve, 300));
+          
+          // Check for existing voice questions after refresh
+          const currentQuestions = Array.isArray(allQuestions) 
+            ? allQuestions.filter((q) => Number(q.stage) === 3)
+            : [];
+          
+          // Check if welcome question already exists
+          const welcomeExists = currentQuestions.some(q => 
+            q.question.toLowerCase().includes('welcome') && 
+            q.question.toLowerCase().includes('introduce yourself')
+          );
+          
+          if (!welcomeExists) {
+            await generateVoiceQuestion(1, []);
+          } else {
+            // Ensure our local state reflects the existing welcome question
+            setVoiceInterview(prev => ({
+              ...prev,
+              currentQuestionNumber: 1
+            }));
+          }
+        } catch (error) {
+          console.error('Error during voice interview initialization:', error);
+          // Even if refresh fails, try to generate the question
+          await generateVoiceQuestion(1, []);
+        } finally {
+          // Always reset generating flags
+          isGeneratingRef.current = false;
+          setVoiceInterview(prev => ({ ...prev, isGenerating: false }));
+        }
+      };
 
-    initializeVoiceInterview();
-  }, [currentStage, currentStageQuestions.length, voiceInterview.isGenerating, voiceInterview.currentQuestionNumber, generateVoiceQuestion]);
+      generateFirstQuestion();
+    }
+  }, [currentStage, voiceInterview.currentQuestionNumber, voiceInterview.isGenerating, generateVoiceQuestion, allQuestions, refetchQuestions, typedInterview?.id]);
 
   // Speak current question when it changes (voice stage only)
   useEffect(() => {
-    if (currentStage === 3 && currentQuestion && currentQuestion.question) {
-      speakText(currentQuestion.question);
+    // Reset the ref when question changes
+    hasSpokenCurrentQuestionRef.current = false;
+    
+    // Only speak if we're in voice stage, have a question, and haven't spoken this question yet
+    if (currentStage === 3 && currentQuestion && currentQuestion.question && !hasSpokenCurrentQuestionRef.current) {
+      // Mark that we've spoken this question
+      hasSpokenCurrentQuestionRef.current = true;
+      
+      // Add a small delay to ensure state is fully updated
+      const timer = setTimeout(() => {
+        speakText(currentQuestion.question);
+      }, 300);
+      
+      return () => clearTimeout(timer);
     }
-  }, [currentStage, currentQuestion?.id]);
-
-  useEffect(() => {
+    
+    // Cleanup function to cancel speech when component unmounts or question changes
     return () => {
       if ('speechSynthesis' in window) {
         window.speechSynthesis.cancel();
-        setIsSpeaking(false);
       }
     };
-  }, [currentQuestion?.id]);
+  }, [currentStage, currentQuestion?.id, currentQuestion?.question]); // Include question text in dependencies
 
   if (loading || interviewLoading || questionsLoading) {
     return (
@@ -769,12 +1362,16 @@ export default function Interview() {
   const speakText = (text: string) => {
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 0.9;
-      utterance.pitch = 1;
-      utterance.onstart = () => setIsSpeaking(true);
-      utterance.onend = () => setIsSpeaking(false);
-      window.speechSynthesis.speak(utterance);
+      // Add a small delay to ensure cancellation is complete
+      setTimeout(() => {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 0.9;
+        utterance.pitch = 1;
+        utterance.onstart = () => setIsSpeaking(true);
+        utterance.onend = () => setIsSpeaking(false);
+        utterance.onerror = () => setIsSpeaking(false);
+        window.speechSynthesis.speak(utterance);
+      }, 100);
     }
   };
 
@@ -799,19 +1396,25 @@ export default function Interview() {
     const qid = currentQuestion.id;
     const ans = selectedAnswer;
     
-    // Advance to next question (or stage) immediately
-    if (currentQuestionIndex < currentStageQuestions.length - 1) {
+    // If this is the last question, navigate immediately to prevent UI flicker
+    if (currentQuestionIndex >= currentStageQuestions.length - 1) {
+      console.log('🏁 All MCQ questions completed, moving to next stage');
+      // Clear selected answer immediately to prevent UI issues
+      setSelectedAnswer("");
+      // Navigate to next stage immediately
+      moveToNextStage();
+    } else {
+      // Advance to next question
+      console.log('➡️ Moving to next MCQ question');
       setCurrentQuestionIndex(prev => prev + 1);
       setSelectedAnswer("");
-    } else {
-      moveToNextStage();
     }
     
     // Fire-and-forget submission in background
     submitResponseMutation.mutate(
       { questionId: qid, answer: ans },
       { 
-        onError: (error) => {
+        onError: (error: any) => {
           console.error('Background MCQ submission failed:', error);
           toast({
             title: "Warning",
@@ -844,22 +1447,64 @@ export default function Interview() {
 
   // FIXED handleVoiceSubmit function
   const handleVoiceSubmit = async (blob?: Blob) => {
-    if (!currentQuestion) {
+    // Prevent multiple simultaneous calls
+    if (isSubmittingVoiceRef.current) {
+      console.log('⚠️ Voice submit already in progress');
+      return;
+    }
+    
+    // Prevent duplicate generation with a simpler approach
+    if (isGeneratingRef.current) {
+      console.log('⚠️ Skipping question generation - already in progress');
+      return;
+    }
+    
+    if (!typedInterview) {
       toast({
-        title: "No question found",
+        title: "No interview found",
         description: "Please refresh the page and try again.",
         variant: "destructive",
       });
       return;
     }
     
-    setIsSubmitting(true);
-    if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel();
-      setIsSpeaking(false);
-    }
-    
     try {
+      isSubmittingVoiceRef.current = true;
+      setIsSubmitting(true);
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        setIsSpeaking(false);
+      }
+      
+      // If we're generating the first question (welcome question)
+      if (voiceInterview.currentQuestionNumber === 1 && !voiceInterview.hasWelcomeQuestion) {
+        console.log('🎤 Generating welcome question');
+        isGeneratingRef.current = true;
+        setVoiceInterview(prev => ({ ...prev, isGenerating: true }));
+        
+        try {
+          await generateVoiceQuestion(1, []);
+          setVoiceInterview(prev => ({
+            ...prev,
+            hasWelcomeQuestion: true
+          }));
+        } finally {
+          isGeneratingRef.current = false;
+          setVoiceInterview(prev => ({ ...prev, isGenerating: false }));
+        }
+        return;
+      }
+      
+      // For subsequent questions, we need to have a current question
+      if (!currentQuestion) {
+        toast({
+          title: "No question found",
+          description: "Please refresh the page and try again.",
+          variant: "destructive",
+        });
+        return;
+      }
+      
       let audioBase64;
       const finalBlob = blob || audioBlob;
       if (finalBlob) {
@@ -870,56 +1515,86 @@ export default function Interview() {
         questionId: currentQuestion.id,
         currentQuestionNumber: voiceInterview.currentQuestionNumber,
         answerLength: textAnswer.length,
-        hasAudio: !!audioBase64
+        hasAudio: !!audioBase64,
+        hasCameraResults: !!cameraAnalysisResults
       });
+      
+      // Submit the response - prioritize camera results, then text answer, then audio
+      const answerText = cameraAnalysisResults?.transcript || textAnswer || '';
+      
+      // Include camera analysis data in the response if available
+      let codingEvaluation: any = {};
+      if (cameraAnalysisResults) {
+        codingEvaluation = {
+          cameraAnalysis: {
+            transcript: cameraAnalysisResults.transcript,
+            geminiScore: cameraAnalysisResults.geminiScore,
+            geminiFeedback: cameraAnalysisResults.geminiFeedback,
+            dominantEmotion: cameraAnalysisResults.dominantEmotion,
+            eyeContactPct: cameraAnalysisResults.eyeContactPct,
+            headMovementStd: cameraAnalysisResults.headMovementStd,
+            postureScore: cameraAnalysisResults.postureScore,
+            visualScore: cameraAnalysisResults.visualScore,
+            finalScore: cameraAnalysisResults.finalScore,
+            emotionLog: cameraAnalysisResults.emotionLog
+          }
+        };
+      }
       
       // Submit the response
       await submitResponseMutation.mutateAsync({
         questionId: currentQuestion.id,
-        answer: textAnswer,
+        answer: answerText,
         audioBlob: audioBase64,
+        codingEvaluation: codingEvaluation
       });
       
-      // Prepare updated Q&A history with the latest response
-      const newQA = { question: currentQuestion.question, answer: textAnswer };
-      const updatedVoiceQA = [...voiceInterview.qaHistory, newQA];
+      // For questions after the first one, we need to generate the next question before updating state
+      const isLastQuestion = voiceInterview.currentQuestionNumber >= maxVoiceQuestions;
       
-      // Clear form
+      if (!isLastQuestion) {
+        // Generate the next question before updating state
+        isGeneratingRef.current = true;
+        setVoiceInterview(prev => ({ ...prev, isGenerating: true }));
+        
+        try {
+          await generateVoiceQuestion(
+            voiceInterview.currentQuestionNumber + 1,
+            [...voiceInterview.qaHistory, { question: currentQuestion.question, answer: answerText }]
+          );
+        } finally {
+          isGeneratingRef.current = false;
+          setVoiceInterview(prev => ({ ...prev, isGenerating: false }));
+        }
+      }
+      
+      // Update voice interview state
+      setVoiceInterview(prev => ({
+        ...prev,
+        currentQuestionNumber: prev.currentQuestionNumber + 1,
+        qaHistory: [...prev.qaHistory, { question: currentQuestion.question, answer: answerText }]
+      }));
+      
+      // Clear form and results
       setTextAnswer("");
       setAudioBlob(null);
+      setCameraAnalysisResults(null);
+      setShowCameraResults(false);
+      setShowRefreshButton(true);
       
-      // Check if we should generate next question or complete interview
-      const nextQuestionNumber = voiceInterview.currentQuestionNumber + 1;
-      
-      console.log('🔍 Voice submission completed:', {
-        currentNumber: voiceInterview.currentQuestionNumber,
-        nextNumber: nextQuestionNumber,
-        maxQuestions: maxVoiceQuestions,
-        willContinue: nextQuestionNumber <= maxVoiceQuestions
-      });
-      
-      if (nextQuestionNumber <= maxVoiceQuestions) {
-        // Update state to show we're moving to next question
-        setVoiceInterview(prev => ({
-          ...prev,
-          currentQuestionNumber: nextQuestionNumber,
-          qaHistory: updatedVoiceQA
-        }));
-        
-        // Generate next question
-        await generateVoiceQuestion(nextQuestionNumber, updatedVoiceQA);
-      } else {
-        console.log('✅ Voice interview completed - all questions answered');
+      // If this was the last question, complete the interview
+      if (isLastQuestion) {
         await completeInterview();
       }
     } catch (error) {
-      console.error('Voice submission error:', error);
+      console.error('Error submitting voice response:', error);
       toast({
         title: "Error",
-        description: "Failed to submit response. Please try again.",
+        description: "Failed to submit your response. Please try again.",
         variant: "destructive",
       });
     } finally {
+      isSubmittingVoiceRef.current = false;
       setIsSubmitting(false);
     }
   };
@@ -937,7 +1612,41 @@ export default function Interview() {
   };
 
   function renderCurrentQuestion() {
+  // Add a speaking animation when the AI is speaking
+  const speakingAnimation = isSpeaking ? "animate-pulse" : "";
+
+  // Avatar component for AI interviewer
+  const InterviewerAvatar = () => (
+    <AIInterviewerAvatar isSpeaking={isSpeaking} size="md" className="mr-4" />
+  );
+  
+  // Handle transition state
+  if (currentQuestionIndex === -1) {
+    return (
+      <div className="text-center py-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+        <p className="text-gray-600">Moving to next stage...</p>
+      </div>
+    );
+  }
+  
     if (!currentStageQuestions || currentStageQuestions.length === 0) {
+    // Add avatar to voice interview loading state
+    if (currentStage === 3 && voiceInterview.isGenerating) {
+      return (
+        <div className="text-center py-8">
+          <div className="flex items-center justify-center mb-4">
+            <InterviewerAvatar />
+          </div>
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+          <p className="text-gray-600">
+            {voiceInterview.currentQuestionNumber === 1 
+              ? "Generating welcome question..." 
+              : `Generating question ${voiceInterview.currentQuestionNumber}...`}
+          </p>
+        </div>
+      );
+    }
       if (currentStage === 3 && voiceInterview.isGenerating) {
         return (
           <div className="text-center py-8">
@@ -947,6 +1656,18 @@ export default function Interview() {
                 ? "Generating welcome question..." 
                 : `Generating question ${voiceInterview.currentQuestionNumber}...`}
             </p>
+          </div>
+        );
+      }
+      // Show loading state for voice interview when no questions exist yet
+      if (currentStage === 3) {
+        return (
+          <div className="text-center py-8">
+            <div className="flex items-center justify-center mb-4">
+              <InterviewerAvatar />
+            </div>
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+            <p className="text-gray-600">Preparing your voice interview...</p>
           </div>
         );
       }
@@ -969,6 +1690,9 @@ export default function Interview() {
       if (currentStage === 3) {
         return (
           <div className="text-center py-8">
+            <div className="flex items-center justify-center mb-4">
+              <AIInterviewerAvatar isSpeaking={false} size="lg" />
+            </div>
             <p className="text-gray-600 mb-4">
               {voiceInterview.isGenerating 
                 ? "Generating voice question..." 
@@ -988,100 +1712,211 @@ export default function Interview() {
     if (currentStage === 1) {
       return (
         <div className="space-y-6 animate-in slide-in-from-right duration-300">
-          <div>
-            <div className="flex justify-between items-center mb-4">
+          {/* Enhanced Header Section */}
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border-2 border-blue-200 rounded-xl p-6">
+            <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
-                <div className="flex items-center space-x-2">
-                  <h3 className="text-lg font-semibold">Question {currentQuestionIndex + 1} of {currentStageQuestions.length}</h3>
-                  {/* Show indicator if previous question was skipped */}
-                  {currentQuestionIndex > 0 && currentStageQuestions[currentQuestionIndex - 1] && 
-                   mcqStatusById[currentStageQuestions[currentQuestionIndex - 1].id] === 'skipped' && (
-                    <Badge variant="outline" className="text-xs text-orange-600 border-orange-300 bg-orange-50">
-                      Previous: Skipped
-                    </Badge>
-                  )}
+                <div className="bg-blue-500 text-white p-3 rounded-full">
+                  <Brain className="h-6 w-6" />
                 </div>
-                <div className="flex items-center space-x-2">
-                  <Progress value={(currentQuestionIndex / currentStageQuestions.length) * 100} className="w-24 h-2" />
-                  <span className="text-sm text-gray-500">{Math.round((currentQuestionIndex / currentStageQuestions.length) * 100)}%</span>
+                <div>
+                  <h3 className="text-xl font-bold text-gray-900">Multiple Choice Question</h3>
+                  <div className="flex items-center space-x-4 mt-1">
+                    <span className="text-sm text-gray-600">
+                      Question {currentQuestionIndex + 1} of {currentStageQuestions.length}
+                    </span>
+                    {/* Show indicator if previous question was skipped */}
+                    {currentQuestionIndex > 0 && currentStageQuestions[currentQuestionIndex - 1] && 
+                     mcqStatusById[currentStageQuestions[currentQuestionIndex - 1].id] === 'skipped' && (
+                      <Badge variant="outline" className="text-xs text-orange-600 border-orange-300 bg-orange-50">
+                        Previous: Skipped
+                      </Badge>
+                    )}
+                    <div className="flex items-center space-x-2">
+                      <Progress value={(currentQuestionIndex / currentStageQuestions.length) * 100} className="w-20 h-1.5" />
+                      <span className="text-xs text-gray-500">{Math.round((currentQuestionIndex / currentStageQuestions.length) * 100)}%</span>
+                    </div>
+                  </div>
                 </div>
               </div>
-              <div className="flex items-center space-x-2">
-                <div className="flex items-center space-x-1">
+              
+              {/* Enhanced Timer Section */}
+              <div className="text-right">
+                <div className="flex items-center space-x-3 mb-2">
                   <Clock className="h-4 w-4 text-gray-500" />
-                  <span className="text-xs text-gray-500">Time:</span>
+                  <span className="text-xs text-gray-500 uppercase tracking-wide">Time Remaining</span>
                 </div>
-                <div className="relative">
-                  {/* Circular timer progress indicator */}
-                  <svg className="w-4 h-4 transform -rotate-90" viewBox="0 0 16 16">
-                    <circle
-                      cx="8"
-                      cy="8"
-                      r="6"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      fill="none"
-                      className="text-gray-200"
-                    />
-                    <circle
-                      cx="8"
-                      cy="8"
-                      r="6"
-                      stroke="currentColor"
-                      strokeWidth="1.5"
-                      fill="none"
-                      strokeDasharray={`${(mcqTimer.timeRemaining / 60) * 37.7} 37.7`}
-                      className={`transition-all duration-1000 ${mcqTimer.isWarning ? 'text-red-500' : 'text-blue-500'}`}
-                    />
-                  </svg>
-                </div>
-                <span className={`font-mono text-lg transition-all duration-300 ${mcqTimer.isWarning ? 'text-red-600 font-bold scale-110' : 'text-gray-700'}`}>
-                  {mcqTimer.formatTime()}
-                </span>
-
-                {mcqTimer.isWarning && (
-                  <div className="flex items-center space-x-1">
-                    <AlertTriangle className="h-4 w-4 text-red-500 animate-pulse" />
-                    <span className="text-xs text-red-600 font-medium animate-pulse">Hurry!</span>
+                <div className="flex items-center justify-end space-x-3">
+                  <div className="relative">
+                    <svg className="w-6 h-6 transform -rotate-90" viewBox="0 0 24 24">
+                      <circle
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        fill="none"
+                        className="text-gray-200"
+                      />
+                      <circle
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        fill="none"
+                        strokeDasharray={`${(mcqTimer.timeRemaining / 60) * 62.83} 62.83`}
+                        className={`transition-all duration-1000 ${mcqTimer.isWarning ? 'text-red-500' : 'text-blue-500'}`}
+                      />
+                    </svg>
                   </div>
-                )}
+                  <div className="text-center">
+                    <span className={`font-mono text-2xl font-bold transition-all duration-300 ${mcqTimer.isWarning ? 'text-red-600 animate-pulse' : 'text-gray-700'}`}>
+                      {mcqTimer.formatTime()}
+                    </span>
+                    {mcqTimer.isWarning && (
+                      <div className="flex items-center justify-center space-x-1 mt-1">
+                        <AlertTriangle className="h-4 w-4 text-red-500 animate-bounce" />
+                        <span className="text-xs text-red-600 font-medium animate-pulse">Hurry up!</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
-            {/* Timer progress bar */}
-            <div className="w-full mb-4">
+            
+            {/* Enhanced Timer progress bar */}
+            <div className="w-full mt-4">
               <Progress 
                 value={((60 - mcqTimer.timeRemaining) / 60) * 100} 
-                className="h-1" 
+                className="h-2 rounded-full" 
                 style={{
                   '--progress-color': mcqTimer.isWarning ? '#dc2626' : '#3b82f6'
                 } as React.CSSProperties}
               />
             </div>
-            <p className="text-gray-700 mb-6">{currentQuestion.question}</p>
+          </div>
+
+          {/* Enhanced Question Card */}
+          <div className="bg-white border-2 border-gray-200 rounded-xl p-8 shadow-sm">
+            {/* Question Header */}
+            <div className="flex items-center space-x-3 mb-6">
+              <div className="bg-yellow-100 text-yellow-800 px-4 py-2 rounded-full text-sm font-semibold">
+                📝 Question
+              </div>
+              <div className="text-sm text-gray-500">
+                Read carefully - {mcqTimer.formatTime()} remaining
+              </div>
+            </div>
+            
+            {/* Enhanced Question Display */}
+            <div className="mb-8">
+              <QuestionRenderer 
+                question={currentQuestion.question} 
+                onFixQuestion={handleFixQuestion}
+              />
+            </div>
+            {/* Answer Options Header */}
+            <div className="flex items-center space-x-3 mb-6">
+              <div className="bg-green-100 text-green-800 px-4 py-2 rounded-full text-sm font-semibold">
+                💯 Choose Your Answer
+              </div>
+              <div className="text-sm text-gray-500">
+                Click on an option to select it
+              </div>
+            </div>
+            
+            {/* Enhanced Options Display */}
             <RadioGroup value={selectedAnswer} onValueChange={setSelectedAnswer}>
-              <div className="space-y-3">
+              <div className="space-y-4">
                 {Array.isArray(currentQuestion.options) && currentQuestion.options.map(function(option: string, index: number) {
+                  const optionLetter = String.fromCharCode(65 + index); // A, B, C, D
+                  const hasCode = /```|`[^`]+`|function\s|class\s|def\s|var\s|let\s|const\s|<\w+|\{[^}]*\}|\([^)]*\)|;$|import\s/.test(option);
+                  const isSelected = selectedAnswer === option;
+                  
                   return (
-                    <div key={index} className="flex items-center space-x-2">
-                      <RadioGroupItem value={option} id={`option-${index}`} />
-                      <Label htmlFor={`option-${index}`} className="flex-1 cursor-pointer">
-                        {option}
-                      </Label>
+                    <div key={index} className="relative">
+                      <div className={`flex items-start space-x-4 p-5 rounded-xl border-2 transition-all duration-200 cursor-pointer hover:shadow-md ${
+                        isSelected 
+                          ? 'border-blue-400 bg-blue-50 shadow-md' 
+                          : 'border-gray-200 bg-white hover:border-gray-300'
+                      }`} 
+                           onClick={() => setSelectedAnswer(option)}>
+                        <RadioGroupItem value={option} id={`option-${index}`} className="mt-1.5" />
+                        <div className="flex-1">
+                          <div className="flex items-center space-x-3 mb-3">
+                            <div className={`font-bold text-base px-3 py-1.5 rounded-full min-w-[36px] text-center transition-colors ${
+                              isSelected 
+                                ? 'bg-blue-500 text-white' 
+                                : 'bg-gray-100 text-gray-700'
+                            }`}>
+                              {optionLetter}
+                            </div>
+                            {hasCode && (
+                              <div className="flex items-center space-x-1">
+                                <Code className="h-4 w-4 text-blue-600" />
+                                <span className="text-xs text-blue-600 font-medium">Contains Code</span>
+                              </div>
+                            )}
+                          </div>
+                          <Label htmlFor={`option-${index}`} className="cursor-pointer text-base leading-relaxed">
+                            {hasCode ? (
+                              <div className="space-y-3">
+                                <QuestionRenderer 
+                                  question={option} 
+                                  onFixQuestion={handleFixQuestion}
+                                />
+                              </div>
+                            ) : (
+                              <div className="text-gray-700 text-base leading-relaxed">{option}</div>
+                            )}
+                          </Label>
+                        </div>
+                      </div>
+                      {isSelected && (
+                        <div className="absolute -right-3 -top-3 bg-blue-500 text-white rounded-full p-2 shadow-lg">
+                          <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
               </div>
             </RadioGroup>
           </div>
-          <div className="flex justify-between items-center">
-            <Button
-              onClick={handleMCQSubmit}
-              disabled={!selectedAnswer}
-              className="btn-primary"
-            >
-              Submit Answer
-              <ArrowRight className="ml-2 h-4 w-4" />
-            </Button>
+          
+          {/* Enhanced Submit Section */}
+          <div className="bg-white border border-gray-200 rounded-xl p-6">
+            <div className="flex justify-between items-center">
+              {selectedAnswer ? (
+                <div className="flex items-center space-x-2 text-green-600">
+                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                  <span className="font-medium">Answer selected</span>
+                </div>
+              ) : (
+                <div className="text-gray-500 text-sm">
+                  Please select an answer to continue
+                </div>
+              )}
+              
+              <Button
+                onClick={handleMCQSubmit}
+                disabled={!selectedAnswer}
+                size="lg"
+                className={`px-8 py-3 text-base font-semibold transition-all duration-200 ${
+                  selectedAnswer 
+                    ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl' 
+                    : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                }`}
+              >
+                Submit Answer
+                <ArrowRight className="ml-2 h-5 w-5" />
+              </Button>
+            </div>
           </div>
         </div>
       );
@@ -1109,9 +1944,11 @@ export default function Interview() {
     if (currentStage === 3 && currentQuestion) {
       return (
         <div className="space-y-6 animate-in slide-in-from-left duration-300">
+          {/* Camera Preview and Controls */}
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-6">
-            <div className="font-semibold text-gray-900 mb-2 flex items-center justify-between">
+            <div className="font-semibold text-gray-900 mb-4 flex items-center justify-between">
               <div className="flex items-center space-x-4">
+                <InterviewerAvatar />
                 <span>
                   {voiceInterview.currentQuestionNumber === 1 
                     ? "Welcome Question" 
@@ -1160,58 +1997,242 @@ export default function Interview() {
                 )}
               </div>
             </div>
+            
             <div className="bg-white rounded-lg p-4 mb-4">
               <p className="text-gray-700">{currentQuestion.question}</p>
             </div>
-          </div>
-          
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Type Your Answer</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Textarea
-                  value={textAnswer}
-                  onChange={(e) => setTextAnswer(e.target.value)}
-                  placeholder="Type your response here..."
-                  className="min-h-32"
-                  disabled={isSubmitting}
-                />
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-lg">Record Your Answer</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <VoiceRecorder
-                  onRecordingComplete={(blob) => setAudioBlob(blob)}
-                  disabled={isSubmitting}
-                />
-              </CardContent>
-            </Card>
-          </div>
-          
-          <div className="flex flex-col space-y-4">
             
-            
-            {/* Submit button */}
-            <div className="flex justify-between items-center">
-              {/* Small submission status indicator */}
-              {isSubmitting && (
-                <div className="flex items-center space-x-2 text-sm text-blue-600">
-                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
-                  <span>Processing response...</span>
+            {/* Camera Preview */}
+            <div className="mb-4">
+              <div className="flex flex-col md:flex-row gap-4">
+                {/* Camera Preview */}
+                <div className="flex-1">
+                  <h3 className="text-lg font-medium mb-2">Camera Preview</h3>
+                  <div className="relative bg-gray-200 rounded-lg overflow-hidden" style={{ height: '200px' }}>
+                    {cameraActive && cameraStream ? (
+                      <video 
+                        autoPlay 
+                        playsInline 
+                        muted 
+                        ref={(video) => {
+                          if (video && cameraStream) {
+                            video.srcObject = cameraStream;
+                          }
+                        }}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-gray-500">
+                        Camera off
+                      </div>
+                    )}
+                    
+                    {/* Recording indicator */}
+                    {isRecordingWithCamera && (
+                      <div className="absolute top-2 right-2 flex items-center">
+                        <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse mr-2"></div>
+                        <span className="text-red-500 font-medium text-sm">REC</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
-              )}
-              
+                
+                {/* Camera Controls */}
+                <div className="flex flex-col justify-between">
+                  <div>
+                    <h3 className="text-lg font-medium mb-2">Recording Controls</h3>
+                    <p className="text-sm text-gray-600 mb-3">Enable camera to analyze your body language and eye contact during the interview.</p>
+                  </div>
+                  
+                  <div className="flex flex-col space-y-2">
+                    {!cameraActive ? (
+                      <Button 
+                        onClick={startCamera}
+                        className="bg-blue-600 hover:bg-blue-700"
+                      >
+                        Enable Camera
+                      </Button>
+                    ) : (
+                      <Button 
+                        onClick={stopCamera}
+                        variant="outline"
+                      >
+                        Disable Camera
+                      </Button>
+                    )}
+                    
+                    {cameraActive && !isRecordingWithCamera ? (
+                      <Button 
+                        onClick={startRecordingWithCamera}
+                        className="bg-red-600 hover:bg-red-700"
+                      >
+                        Start Answer
+                      </Button>
+                    ) : cameraActive && isRecordingWithCamera ? (
+                      <Button 
+                        onClick={stopRecordingWithCamera}
+                        className="bg-gray-600 hover:bg-gray-700"
+                      >
+                        Stop Answer
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          {/* Camera Analysis Results */}
+          {showCameraResults && cameraAnalysisResults && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Interview Analysis Results</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <h4 className="font-medium mb-2">Transcript</h4>
+                    <div className="bg-gray-100 p-3 rounded text-sm">
+                      {cameraAnalysisResults.transcript || "No transcript available"}
+                    </div>
+                    {/* Add warning for short analysis time */}
+                    {cameraAnalysisResults.dataQuality === 'very_low' && (
+                      <div className="mt-2 p-2 bg-yellow-100 border border-yellow-300 rounded text-yellow-800 text-sm">
+                        <p className="font-medium">⚠️ Short Recording Warning</p>
+                        <p>Analysis time was too short for reliable results. Please record for at least 10 seconds for accurate analysis.</p>
+                      </div>
+                    )}
+                    {cameraAnalysisResults.dataQuality === 'low' && cameraAnalysisResults.analysisNote?.includes('short') && (
+                      <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded text-yellow-700 text-sm">
+                        <p className="font-medium">ℹ️ Short Recording Note</p>
+                        <p>Analysis time was brief - results may have limited accuracy.</p>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div>
+                    <h4 className="font-medium mb-2">AI Evaluation</h4>
+                    <div className="space-y-2">
+                      <div className="flex justify-between">
+                        <span>Relevance Score:</span>
+                        <span className="font-medium">{cameraAnalysisResults.geminiScore || 0}/100</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Eye Contact:</span>
+                        <span className="font-medium">{Math.round((cameraAnalysisResults.eyeContactPct || 0) * 100)}%</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Posture:</span>
+                        <span className="font-medium">{Math.round((cameraAnalysisResults.postureScore || 0) * 100)}%</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Final Combined Score:</span>
+                        <span className="font-bold text-lg">{cameraAnalysisResults.finalScore || 0}/100</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                {(cameraAnalysisResults.geminiFeedback || cameraAnalysisResults.dominantEmotion) && (
+                  <div className="mt-4 pt-4 border-t">
+                    <h4 className="font-medium mb-2">Feedback</h4>
+                    <div className="bg-blue-50 p-3 rounded text-sm">
+                      {cameraAnalysisResults.geminiFeedback && (
+                        <p className="mb-2">{cameraAnalysisResults.geminiFeedback}</p>
+                      )}
+                      {cameraAnalysisResults.dominantEmotion && (
+                        <p>Detected Emotion: <span className="font-medium">{cameraAnalysisResults.dominantEmotion}</span></p>
+                      )}
+                      {/* Add data quality indicator with more detailed warnings */}
+                      {cameraAnalysisResults.dataQuality && (
+                        <div className={`mt-2 p-2 rounded ${
+                          cameraAnalysisResults.dataQuality === 'very_low' ? 'bg-red-100 text-red-800 border border-red-300' :
+                          cameraAnalysisResults.dataQuality === 'low' ? 'bg-yellow-100 text-yellow-800 border border-yellow-300' :
+                          cameraAnalysisResults.dataQuality === 'medium' ? 'bg-yellow-50 text-yellow-700 border border-yellow-200' :
+                          'bg-green-50 text-green-700 border border-green-200'
+                        }`}>
+                          <p className="font-medium">
+                            Data Quality: {cameraAnalysisResults.dataQuality.charAt(0).toUpperCase() + cameraAnalysisResults.dataQuality.slice(1)}
+                          </p>
+                          {cameraAnalysisResults.analysisNote && (
+                            <p className="text-sm mt-1">{cameraAnalysisResults.analysisNote}</p>
+                          )}
+                          {cameraAnalysisResults.framesCollected && (
+                            <p className="text-xs mt-1">
+                              Frames analyzed: {cameraAnalysisResults.framesCollected}
+                            </p>
+                          )}
+                          {/* Special warning for very short recordings */}
+                          {cameraAnalysisResults.dataQuality === 'very_low' && (
+                            <div className="mt-2 p-2 bg-red-200 rounded">
+                              <p className="font-bold">⚠️ Unreliable Results</p>
+                              <p className="text-sm">The recording was too short for accurate analysis. Please record for at least 10 seconds.</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
+          
+          {/* Submit with Camera Results */}
+          {showCameraResults && (
+            <div className="flex justify-end">
               <Button
-                onClick={() => {
-                  console.log('🔥 Voice submit clicked - User action');
-                  handleVoiceSubmit();
+                onClick={async () => {
+                  // Prevent multiple simultaneous calls
+                  if (isSubmittingVoiceRef.current) {
+                    console.log('⚠️ Camera results submit already in progress');
+                    return;
+                  }
+                  
+                  try {
+                    isSubmittingVoiceRef.current = true;
+                    setIsSubmitting(true);
+                    
+                    // Submit the camera analysis results as the response
+                    await submitResponseMutation.mutateAsync({
+                      questionId: currentQuestion.id,
+                      answer: (cameraAnalysisResults && cameraAnalysisResults.transcript) || textAnswer || '',
+                      audioBlob: audioBlob ? await blobToBase64(audioBlob) : undefined,
+                    });
+                    
+                    // Clear camera results after successful submission
+                    setCameraAnalysisResults(null);
+                    setShowCameraResults(false);
+                    setTextAnswer("");
+                    setAudioBlob(null);
+                    
+                    // Move to next question or complete interview
+                    if (voiceInterview.currentQuestionNumber < maxVoiceQuestions) {
+                      // Update state to show we're moving to next question
+                      setVoiceInterview(prev => ({
+                        ...prev,
+                        currentQuestionNumber: prev.currentQuestionNumber + 1,
+                        qaHistory: [...prev.qaHistory, { 
+                          question: currentQuestion.question, 
+                          answer: (cameraAnalysisResults && cameraAnalysisResults.transcript) || textAnswer || '' 
+                        }]
+                      }));
+                    } else {
+                      await completeInterview();
+                    }
+                  } catch (submitError) {
+                    console.error('Error submitting camera response:', submitError);
+                    toast({
+                      title: "Error",
+                      description: "Failed to submit response. Please try again.",
+                      variant: "destructive",
+                    });
+                  } finally {
+                    isSubmittingVoiceRef.current = false;
+                    setIsSubmitting(false);
+                  }
                 }}
-                disabled={isSubmitting || (!textAnswer.trim() && !audioBlob)}
+                disabled={isSubmitting}
                 className="btn-primary"
               >
                 {isSubmitting ? (
@@ -1220,11 +2241,61 @@ export default function Interview() {
                     Submitting...
                   </>
                 ) : (
-                  voiceInterview.currentQuestionNumber === maxVoiceQuestions ? "Complete Interview" : "Submit Response"
+                  voiceInterview.currentQuestionNumber >= maxVoiceQuestions ? "Complete Interview" : "Submit Response"
                 )}
               </Button>
             </div>
-          </div>
+          )}
+          
+          {/* Voice input methods - only show if camera results are not available */}
+          {!showCameraResults && (
+            <>
+              <div className="grid grid-cols-1 gap-6">
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Record Your Answer</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <VoiceRecorder
+                      onRecordingComplete={(blob) => setAudioBlob(blob)}
+                      disabled={isSubmitting}
+                    />
+                  </CardContent>
+                </Card>
+              </div>
+              
+              <div className="flex flex-col space-y-4">
+                {/* Submit button */}
+                <div className="flex justify-between items-center">
+                  {/* Small submission status indicator */}
+                  {isSubmitting && (
+                    <div className="flex items-center space-x-2 text-sm text-blue-600">
+                      <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-blue-600"></div>
+                      <span>Processing response...</span>
+                    </div>
+                  )}
+                  
+                  <Button
+                    onClick={() => {
+                      console.log('🔥 Voice submit clicked - User action');
+                      handleVoiceSubmit();
+                    }}
+                    disabled={isSubmitting || (!textAnswer.trim() && !audioBlob && !showCameraResults)}
+                    className="btn-primary"
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Submitting...
+                      </>
+                    ) : (
+                      voiceInterview.currentQuestionNumber >= maxVoiceQuestions ? "Complete Interview" : "Submit Response"
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       );
     }
@@ -1248,6 +2319,7 @@ export default function Interview() {
                 </div>
                 <div className="flex items-center space-x-3">
                   <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
+
                     Stage {typedInterview.currentStage} of 3
                   </Badge>
                   <Button

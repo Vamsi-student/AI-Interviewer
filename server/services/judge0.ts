@@ -159,7 +159,7 @@ export async function executeCode(
         source_code: encodeBase64(code),
         language_id: languageId,
         stdin: encodeBase64(testCase.input),
-        expected_output: '',
+        expected_output: '', // We'll handle expected output comparison in our code
       };
 
       let result;
@@ -169,7 +169,7 @@ export async function executeCode(
         results.push({ status: { description: 'Failed' }, error: err.message });
         testCaseResults.push({
           input: testCase.input,
-          expected: testCase.expectedOutput,
+          expectedOutput: testCase.expectedOutput, // Standardize property name
           actual: '',
           passed: false,
           error: err.message
@@ -191,8 +191,9 @@ export async function executeCode(
       }
       testCaseResults.push({
         input: testCase.input,
-        expected: testCase.expectedOutput,
+        expectedOutput: testCase.expectedOutput, // Standardize property name to camelCase
         actual: actualOutput,
+        userOutput: actualOutput, // Add userOutput property for consistency
         passed,
         diff: passed ? '' : `Expected: ${cleanExpected}, Got: ${cleanActual}`
       });

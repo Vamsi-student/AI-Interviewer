@@ -33,7 +33,7 @@ import { getAuthToken } from "@/lib/auth";
 
 // New component for interview statistics
 const ProfileStats = ({ interviews }: { interviews: Interview[] }) => {
-  const interviewsCompleted = interviews.length;
+  const interviewsCompleted = interviews.filter(i => i.status === 'completed').length;
   const averageScore = interviewsCompleted > 0
     ? Math.round(interviews.reduce((sum, i) => sum + (i.overallScore || 0), 0) / interviewsCompleted)
     : 0;
@@ -123,6 +123,7 @@ export default function Profile() {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   
+  // Set up automatic refetching every 30 seconds for real-time updates
   const { data: interviews = [], refetch, isFetching } = useInterviewsQuery();
   const typedInterviews = interviews as Interview[];
 
@@ -134,6 +135,17 @@ export default function Profile() {
     profileImage: ""
   });
   const [optimisticProfile, setOptimisticProfile] = useState(profileForm);
+
+  // Set up interval for automatic refetching
+  useEffect(() => {
+    // Refetch interviews data every 30 seconds to keep stats updated in real-time
+    const interval = setInterval(() => {
+      refetch();
+    }, 30000); // 30 seconds
+
+    // Clean up interval on component unmount
+    return () => clearInterval(interval);
+  }, [refetch]);
 
   useEffect(() => {
     if (dbUser) {

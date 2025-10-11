@@ -3,6 +3,7 @@ import { useState } from "react";
 interface TestCaseResult {
   input: string;
   expectedOutput: string;
+  expected_output?: string; // Add support for underscore version
   userOutput: string;
   passed: boolean;
   diff?: string;
@@ -94,6 +95,9 @@ export default function TestCaseResultsPanel({ results = [], runtimeMs }: { resu
   // In TestCaseResultsPanel.tsx, update the decodedCompileOutput line
   const decodedCompileOutput = selectedCase.compile_output ? base64Decode(selectedCase.compile_output) : '';
 
+  // Handle both expectedOutput and expected_output property names
+  const expectedOutput = selectedCase.expectedOutput || selectedCase.expected_output || '';
+
   return (
     <div className="w-full flex flex-col items-center">
       {/* Tabs */}
@@ -131,7 +135,7 @@ export default function TestCaseResultsPanel({ results = [], runtimeMs }: { resu
           <div><strong>Input:</strong></div>
           <pre>{selectedCase.input}</pre>
           <div><strong>Expected Output:</strong></div>
-          <pre>{selectedCase.expectedOutput}</pre>
+          <pre>{expectedOutput}</pre>
         </div>
         {/* User output */}
         <div className="flex items-center justify-between mb-3 w-full">

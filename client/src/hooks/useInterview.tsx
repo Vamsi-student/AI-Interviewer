@@ -16,6 +16,9 @@ export function useInterviewsQuery() {
   return useQuery({
     queryKey: ['/api/interviews'],
     enabled,
+    // Refetch every 30 seconds for real-time updates
+    refetchInterval: 30000,
+    refetchIntervalInBackground: true,
     queryFn: async () => {
       const token = await getToken();
       const response = await apiRequest('GET', `/api/interviews`);
@@ -140,14 +143,21 @@ export function useInterview() {
   });
 
   const submitResponseMutation = useMutation({
-    mutationFn: async (data: { questionId: number; answer: string; audioBlob?: string }) => {
+    mutationFn: async (data: { questionId: number; answer: string; audioBlob?: string; codingEvaluation?: any }) => {
       const token = await getToken();
       const response = await apiRequest('POST', '/api/responses', data);
       return await response.json();
     },
-    onSuccess: () => {
+    onSuccess: (result, variables) => {
       if (currentInterviewId) {
         queryClient.invalidateQueries({ queryKey: ['/api/interviews', currentInterviewId, 'responses'] });
+        
+        // If this was a coding response that triggered stage progression, invalidate interview data
+        if (variables.codingEvaluation && result.navigateToStage3) {
+          console.log('🔄 Coding response triggered stage progression - invalidating interview cache');
+          queryClient.invalidateQueries({ queryKey: ['/api/interviews', currentInterviewId] });
+          queryClient.invalidateQueries({ queryKey: ['/api/interviews', currentInterviewId, 'questions'] });
+        }
       }
     },
   });

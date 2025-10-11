@@ -90,7 +90,7 @@ export default function TestPanel({
                         ? "bg-green-100 dark:bg-green-900 border-green-500 text-green-700 dark:text-green-200"
                         : statusArr[idx] === "failed"
                           ? "bg-red-100 dark:bg-red-900 border-red-500 text-red-700 dark:text-red-200"
-                          : "bg-blue-100 dark:bg-blue-900 border-blue-500 text-blue-700 dark:text-blue-200"
+                        : "bg-blue-100 dark:bg-blue-900 border-blue-500 text-blue-700 dark:text-blue-200"
                     )
                     : "bg-blue-100 dark:bg-blue-900 border-blue-500 text-blue-700 dark:text-blue-200"
                   )
@@ -160,7 +160,9 @@ function TestResultView({ testCase, result, isRunning }: { testCase: any, result
   // Use result if available, else fallback to testCase
   const input = testCase ? { ...testCase } : {};
   delete input.id;
-  const expected = result?.expectedOutput ?? '';
+  
+  // Handle both expectedOutput and expected_output property names
+  const expected = result?.expectedOutput ?? result?.expected_output ?? '';
   const actual = isRunning ? '...' : (result?.userOutput !== undefined && result?.userOutput !== null && result?.userOutput !== '' ? result.userOutput : 'No output');
   const passed = result?.passed;
   const diff = result?.diff;
@@ -266,4 +268,4 @@ function CodeBlock({ value, status }: { value: string; status?: string }) {
       )}>{value}</pre>
     </div>
   );
-} 
+}

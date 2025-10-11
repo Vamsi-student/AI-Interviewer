@@ -104,6 +104,7 @@ export type Question = typeof questions.$inferSelect;
 export type InsertQuestion = z.infer<typeof insertQuestionSchema>;
 export type Response = typeof responses.$inferSelect;
 export type InsertResponse = z.infer<typeof insertResponseSchema>;
+export type CodingProblem = typeof codingProblems.$inferSelect;
 
 // --- Types for dynamic test harness generation ---
 export type FunctionSignatureDetails = {
@@ -121,6 +122,22 @@ export type FunctionSignatureDetails = {
 export type TestCaseInput = {
   [paramName: string]: any;
 };
+
+// --- Coding Problems Table (User's Database Structure) ---
+export const codingProblems = pgTable("coding_problems", {
+  id: serial("id").primaryKey(),
+  problemTitle: text("problem_title").notNull(),
+  problemDescription: text("problem_description").notNull(),
+  problemHardnessLevel: text("problem_hardness_level").notNull(), // easy, medium, hard
+  constraints: text("constraints"),
+  examples: jsonb("examples"), // JSON array with input/output examples
+  testCases: jsonb("test_cases"), // JSON array with test cases for execution
+  predefinedTemplates: jsonb("predefined_templates"), // JSON object with language templates
+  stage: integer("stage").notNull().default(2), // Always 2 for coding
+  type: text("type").notNull().default("coding"), // Always coding
+  signaturePlaceholder: jsonb("signature_placeholder"), // JSON object with signatures per language
+  testRunners: jsonb("test_runners"), // JSON object with test runner code per language
+});
 
 // --- Coding Problems and Test Cases Tables ---
 export const problems = pgTable('problems', {
@@ -143,6 +160,7 @@ export const schema = {
   interviews,
   questions,
   responses,
+  codingProblems,
   problems,
   testCases,
 };

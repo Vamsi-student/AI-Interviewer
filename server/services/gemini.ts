@@ -592,6 +592,7 @@ CRITICAL REQUIREMENTS:
 - Avoid basic definitions, syntax, or memorization questions
 - Focus on problem-solving, trade-offs, and real-world scenarios
 - Options should be plausible but have clear technical distinctions
+- For code output questions: ALWAYS include the complete code snippet in the question field using proper markdown formatting
 
 Examples of FORBIDDEN easy questions:
 - "What does HTML stand for?"
@@ -602,12 +603,18 @@ Examples of REQUIRED challenging questions:
 - Scenario-based debugging problems
 - Algorithm optimization choices
 - System design trade-offs
-- Code output prediction with edge cases
+- Code output prediction with edge cases (MUST include complete code)
+
+IMPORTANT: For any question involving code analysis or output prediction:
+- Include the COMPLETE code snippet in the question field
+- Use proper markdown code blocks with triple backticks
+- Ensure the code is syntactically correct and executable
+- The question should be self-contained with all necessary code
 
 Return JSON array with exactly this structure:
 [
   {
-    "question": "Complex scenario or problem statement requiring analysis",
+    "question": "Problem description followed by code example using triple backticks for code blocks. What will be the output?",
     "options": ["Detailed option A with reasoning", "Detailed option B", "Detailed option C", "Detailed option D"],
     "correctAnswer": "Must exactly match one option",
     "explanation": "Why this answer is correct and why others are wrong - include technical reasoning",
@@ -637,6 +644,12 @@ Return JSON array with exactly this structure:
       if (isQuestionTooEasy(q.question)) {
         console.warn('Generated question may be too easy:', q.question);
       }
+      
+      // Validate code questions include actual code
+      if (mentionsCodeButMissingCode(q.question)) {
+        console.warn('Question mentions code but missing code snippet:', q.question.substring(0, 100));
+        // Try to fix or flag for regeneration
+      }
     }
 
     return questions;
@@ -654,6 +667,7 @@ function getMCQDifficultyPrompt(experienceLevel: string): string {
 - Include questions about time/space complexity analysis
 - Add scenario-based questions about choosing appropriate data structures
 - Include code output prediction with moderate complexity
+- When including code: Use complete, executable code snippets in markdown format
 - Minimum difficulty: LeetCode Easy-Medium level reasoning`;
 
     case 'mid level 3-5 years':
@@ -661,9 +675,10 @@ function getMCQDifficultyPrompt(experienceLevel: string): string {
       return `INTERMEDIATE DIFFICULTY:
 - Advanced algorithm design and optimization
 - System design fundamentals and trade-offs
-- Complex debugging scenarios
+- Complex debugging scenarios with complete code examples
 - Performance optimization questions
 - Design pattern applications
+- When including code: Use complete, executable code snippets in markdown format
 - Minimum difficulty: LeetCode Medium level reasoning`;
 
     case 'senior level 5+ years':
@@ -671,10 +686,11 @@ function getMCQDifficultyPrompt(experienceLevel: string): string {
     case 'advanced':
       return `SENIOR DIFFICULTY:
 - Architecture and system design decisions
-- Complex algorithmic problems
+- Complex algorithmic problems with implementation details
 - Performance at scale considerations
-- Advanced debugging and optimization
+- Advanced debugging and optimization with complete code examples
 - Leadership and technical decision-making scenarios
+- When including code: Use complete, executable code snippets in markdown format
 - Minimum difficulty: LeetCode Medium-Hard level reasoning`;
 
     default:
@@ -693,6 +709,16 @@ function isQuestionTooEasy(question: string): boolean {
   ];
   
   return easyPatterns.some(pattern => pattern.test(question));
+}
+
+function mentionsCodeButMissingCode(question: string): boolean {
+  // Check if question mentions code
+  const mentionsCode = /code snippet|following code|python code|javascript code|java code|c\+\+ code|consider.*code|output.*code/i.test(question);
+  
+  // Check if question actually contains code
+  const hasVisibleCode = /```|`\w+`|def |function |class |import |#include|for\s+\w+\s+in|if\s+.*:|while\s+.*:/i.test(question);
+  
+  return mentionsCode && !hasVisibleCode;
 }
 
 
