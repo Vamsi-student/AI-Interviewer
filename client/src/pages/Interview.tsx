@@ -372,36 +372,68 @@ export default function Interview() {
 
   // Now, after all data is loaded, derive these
   const currentStage = typedInterview?.currentStage || 1;
-  const currentStageQuestions = Array.isArray(allQuestions)
-    ? allQuestions.filter((q) => Number(q.stage) === Number(currentStage))
-    : [];
-  
-  // For voice interviews, use a simple approach - get the current question by number
+  const currentStageQuestions = useMemo(() => {
+    if (!Array.isArray(allQuestions)) return [];
+    const filteredQuestions = allQuestions.filter((q) => Number(q.stage) === Number(currentStage));
+    
+    console.log('📍 Current Stage Questions:', {
+      currentStage: currentStage,
+      totalQuestions: allQuestions.length,
+      stageQuestionsCount: filteredQuestions.length,
+      stageQuestions: filteredQuestions.map(q => ({ id: q.id, stage: q.stage }))
+    });
+    
+    return filteredQuestions;
+  }, [allQuestions, currentStage]);
+
+  // Compute current question based on current stage
   const currentQuestion = useMemo(() => {
-  const voiceQuestions = allQuestions.filter(q => Number(q.stage) === 3);
-  
-  // Sort by questionNumber or createdAt to ensure correct order
-  const sortedQuestions = voiceQuestions.sort((a, b) => {
-    // If your question object has a questionNumber field
-    if (a.questionNumber && b.questionNumber) {
-      return a.questionNumber - b.questionNumber;
+    if (currentStage === 1) {
+      // For MCQ stage, get the current question based on currentQuestionIndex
+      const mcqQuestions = allQuestions.filter(q => Number(q.stage) === 1);
+      
+      if (mcqQuestions.length > 0 && currentQuestionIndex >= 0 && currentQuestionIndex < mcqQuestions.length) {
+        const question = mcqQuestions[currentQuestionIndex];
+        
+        console.log('📍 MCQ Current Question Lookup:', {
+          currentQuestionIndex: currentQuestionIndex,
+          totalMCQQuestions: mcqQuestions.length,
+          foundQuestion: question?.id,
+          questionText: question?.question?.substring(0, 50)
+        });
+        
+        return question;
+      }
+    } else if (currentStage === 3) {
+      // For voice interviews, use a simple approach - get the current question by number
+      const voiceQuestions = allQuestions.filter(q => Number(q.stage) === 3);
+      
+      // Sort by questionNumber or createdAt to ensure correct order
+      const sortedQuestions = voiceQuestions.sort((a, b) => {
+        // If your question object has a questionNumber field
+        if (a.questionNumber && b.questionNumber) {
+          return a.questionNumber - b.questionNumber;
+        }
+        // Otherwise sort by creation date
+        return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+      });
+      
+      // Get the question at the current index
+      const question = sortedQuestions[voiceInterview.currentQuestionNumber - 1];
+      
+      console.log('📍 Voice Current Question Lookup:', {
+        currentQuestionNumber: voiceInterview.currentQuestionNumber,
+        totalVoiceQuestions: sortedQuestions.length,
+        foundQuestion: question?.id,
+        questionText: question?.question?.substring(0, 50)
+      });
+      
+      return question;
     }
-    // Otherwise sort by creation date
-    return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
-  });
-  
-  // Get the question at the current index
-  const question = sortedQuestions[voiceInterview.currentQuestionNumber - 1];
-  
-  console.log('📍 Current Question Lookup:', {
-    currentQuestionNumber: voiceInterview.currentQuestionNumber,
-    totalVoiceQuestions: sortedQuestions.length,
-    foundQuestion: question?.id,
-    questionText: question?.question?.substring(0, 50)
-  });
-  
-  return question;
-}, [allQuestions, voiceInterview.currentQuestionNumber]);
+    
+    // For other stages or if no question found
+    return null;
+  }, [allQuestions, currentStage, currentQuestionIndex, voiceInterview.currentQuestionNumber]);
 
   // Helper function to reset voice interview state
   const resetVoiceInterviewState = useCallback(() => {
@@ -1061,7 +1093,8 @@ const generateVoiceQuestion = useCallback(async (
     if (questions && Array.isArray(questions)) {
       setAllQuestions(questions);
       // Only reset question index if questions changed significantly and we're not in transition
-      if (questions.length > 0 && currentStage !== 3 && currentQuestionIndex !== -1) {
+      // Also ensure we reset when we have questions and we're in stage 1 (MCQ)
+      if (questions.length > 0 && typedInterview?.currentStage === 1 && currentQuestionIndex !== 0) {
         setCurrentQuestionIndex(0);
       }
     } else {
@@ -1071,7 +1104,7 @@ const generateVoiceQuestion = useCallback(async (
         setCurrentQuestionIndex(0);
       }
     }
-  }, [questions, currentStage]);
+  }, [questions, typedInterview?.currentStage, currentStage]);
 
   useEffect(() => {
     // Check if we're coming from coding stage to prevent redirect loop
@@ -1080,7 +1113,8 @@ const generateVoiceQuestion = useCallback(async (
     
     console.log('🔍 Stage redirect check:', {
       typedInterview: typedInterview,
-      currentStage: typedInterview?.currentStage,
+      interviewCurrentStage: typedInterview?.currentStage,
+      currentStage: currentStage,
       fromCoding: fromCoding,
       transitioningRef: transitioningRef.current
     });
@@ -1695,6 +1729,24 @@ const handleVoiceSubmit = useCallback(async (blob?: Blob) => {
   }
   
     if (!currentStageQuestions || currentStageQuestions.length === 0) {
+    // For MCQ stage specifically, if we have allQuestions but no currentStageQuestions,
+    // it means we're still processing or there's a mismatch
+    if (currentStage === 1 && Array.isArray(allQuestions) && allQuestions.length > 0) {
+      const mcqQuestions = allQuestions.filter(q => Number(q.stage) === 1);
+      if (mcqQuestions.length > 0) {
+        // We have MCQ questions, but currentStageQuestions is empty - this is a sync issue
+        console.log('🔄 MCQ sync issue detected, forcing refresh');
+        // Force update of currentStageQuestions
+        forceUpdate();
+        return (
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mx-auto mb-4"></div>
+            <p className="text-gray-600">Preparing your questions...</p>
+          </div>
+        );
+      }
+    }
+    
     // Add avatar to voice interview loading state
     if (currentStage === 3 && voiceInterview.isGenerating) {
       return (

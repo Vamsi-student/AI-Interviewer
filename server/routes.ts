@@ -12,9 +12,6 @@ import {
   evaluateVoiceResponse,
   generateInterviewFeedback,
   analyzeResumeWithGemini,
-  generateFunctionSignature,
-  generateJudge0ExecutableCode,
-  generateFullCodeForTestCase,
   callGemini
 } from "./services/gemini";
 import { transcribeAudio } from "./services/whisper";
@@ -723,10 +720,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Accept previous Q&A context from request body
-      const previousQA = req.body.previousQA || [];
-      const isRetry = req.body.retry || false;
-      const isWelcomeQuestion = req.body.isWelcomeQuestion || false;
-      const questionNumber = req.body.questionNumber || (previousQA.length + 1);
+      const previousQA = Array.isArray(req.body.previousQA) ? req.body.previousQA : [];
+      const isRetry = Boolean(req.body.retry);
+      const isWelcomeQuestion = Boolean(req.body.isWelcomeQuestion);
+      
+      // Validate questionNumber parameter
+      let questionNumber = req.body.questionNumber;
+      if (questionNumber === undefined || questionNumber === null) {
+        questionNumber = previousQA.length + 1;
+      } else {
+        questionNumber = parseInt(questionNumber);
+        if (isNaN(questionNumber) || questionNumber < 1) {
+          questionNumber = previousQA.length + 1;
+        }
+      }
 
       const existingQuestions = await storage.getQuestionsByInterviewId(interview.id);
       const voiceQuestions = existingQuestions
@@ -766,26 +773,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(409).json({ message: 'Welcome question already exists' });
       }
 
-      // Check if a question with this number already exists by looking at the total count
-      // For question N, we should have N-1 questions already (since we start with question 1)
+      // Check if a question with this number already exists
       const existingVoiceQuestions = existingQuestions.filter(q => q.stage === 3);
-      const hasEnoughQuestions = existingVoiceQuestions.length >= questionNumber;
+      const sortedQuestions = existingVoiceQuestions.sort((a, b) => 
+        new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+      );
       
-      if (hasEnoughQuestions && questionNumber > 1) {
-        console.log(`⚠️ Question ${questionNumber} already exists (we have ${existingVoiceQuestions.length} questions), returning existing question`);
-        // Sort by creation time to ensure proper order
-        const sortedQuestions = existingVoiceQuestions.sort((a, b) => 
-          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-        );
-        
-        // Return the question at the correct index (0-based)
-        const questionIndex = questionNumber - 1;
-        if (questionIndex < sortedQuestions.length) {
-          return res.status(200).json(sortedQuestions[questionIndex]);
-        }
+      // If question number is specified and already exists, return the existing question
+      if (questionNumber > 0 && questionNumber <= sortedQuestions.length) {
+        console.log(`⚠️ Question ${questionNumber} already exists, returning existing question`);
+        return res.status(200).json(sortedQuestions[questionNumber - 1]);
       }
 
-      let question;
+      let question: string;
       // If this is the first voice question and no welcome question exists, use friendly intro
       if (previousQA.length === 0 && !welcomeQuestionExists) {
         question = `Hello, welcome to your interview! Could you please introduce yourself and tell me a bit about your background?`;
@@ -813,11 +813,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
           } else {
             question = `Thank you for that response. Could you tell me more about your experience with ${interview.role}?`;
           }
+          
+          // Validate fallback question doesn't duplicate existing ones
+          if (voiceQuestions.some(vq => vq.toLowerCase().includes(question.toLowerCase().substring(0, 20)))) {
+            console.log('⚠️ Fallback question might be duplicate, using alternative');
+            question = `Could you elaborate more on your experience as a ${interview.role}?`;
+          }
         }
       }
   
     // Add question number to the question for better tracking (only for non-welcome questions)
-    if (questionNumber > 1 && !question.toLowerCase().includes(`question ${questionNumber}`) && !question.toLowerCase().includes('welcome')) {
+    if (questionNumber > 0 && !question.toLowerCase().includes('welcome') && 
+        !question.toLowerCase().includes(`question ${questionNumber}`) && 
+        !question.toLowerCase().includes(`question ${questionNumber}:`)) {
       question = `Question ${questionNumber}: ${question}`;
     }
   
@@ -897,11 +905,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           };
         } else {
           const voiceEval = await evaluateVoiceResponse(question.question, finalAnswer, interview.role);
-          // Clamp score: if AI gives less than 40, force to 0
+          // Use the actual AI score without aggressive clamping
           evaluation = {
             ...voiceEval,
-            isCorrect: voiceEval.score >= 60, // Consider correct if score is 60 or above
-            score: voiceEval.score < 40 ? 0 : voiceEval.score,
+            isCorrect: voiceEval.score >= 70, // Consider correct if score is 70 or above (more reasonable threshold)
+            score: Math.max(0, Math.min(100, voiceEval.score)), // Ensure score is between 0-100
           };
         }
       } else if (question.type === 'coding') {
@@ -1199,26 +1207,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
           testRunnerFound = false;
         }
         
-        // FALLBACK: Use AI generation ONLY if no database test runner found
         if (!testRunnerFound) {
-          console.log(`⚠️ WARNING: No database test runner found for test case ${testCaseId}, language: ${language}`);
-          console.log(`🎆 Falling back to AI generation (this should not happen if your database is properly configured)`);
+          console.log(`⚠️ ERROR: No database test runner found for test case ${testCaseId}, language: ${language}`);
+          console.log(`❌ This indicates a missing configuration in your database`);
           
-          let problemDescription = '';
-          try {
-            const parsedQ = typeof codingQ.question === 'string' ? JSON.parse(codingQ.question) : codingQ.question;
-            problemDescription = `${parsedQ.title}\n${parsedQ.description}\nConstraints: ${(parsedQ.constraints || []).join(' ')}`;
-          } catch {
-            problemDescription = typeof codingQ.question === 'string' ? codingQ.question : '';
-          }
-          
-          fullCode = await generateFullCodeForTestCase(
-            problemDescription,
-            userCode,
-            language,
-            testCase.input,
-            testCase.expected_output || testCase.expectedOutput
-          );
+          // Return an error since we don't have a test runner
+          testCaseResults.push({
+            input: testCase.input,
+            expectedOutput: testCase.expected_output || testCase.expectedOutput,
+            actualOutput: '',
+            passed: false,
+            error: `No test runner found for test case ${testCaseId} in ${language}. Please configure the database properly.`,
+            testCaseId: testCaseId
+          });
+          continue; // Skip this test case
         } else {
           console.log(`✅ Successfully using database test runner for test case ${testCaseId}`);
         }
@@ -1432,19 +1434,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // --- Generate function signature for coding problem (Gemini) ---
-  app.post('/api/generate-signature', requireAuth, async (req, res) => {
-    try {
-      const { problemDescription, language } = req.body;
-      if (!problemDescription || !language) {
-        return res.status(400).json({ error: 'Missing problemDescription or language' });
-      }
-      const signature = await generateFunctionSignature(problemDescription, language);
-      res.json({ signature });
-    } catch (error) {
-      console.error('Error generating function signature:', error);
-      res.status(500).json({ error: 'Failed to generate function signature' });
-    }
-  });
+
 
   // Database schema check endpoint
   app.get('/api/debug/schema', async (req, res) => {

@@ -141,35 +141,3 @@ export async function transcribeAudio(audioBlob: Buffer | string, existingFilePa
     throw new Error(`Failed to transcribe audio: ${errorMessage}`);
   }
 }
-
-// Helper: submit a single test case with retry logic
-async function submitWithRetry(submission: any, JUDGE0_API_KEYS: string[], JUDGE0_API_URL: string, JUDGE0_API_HOST: string, exhaustedKeys: Set<string>) {
-  for (let i = 0; i < JUDGE0_API_KEYS.length; i++) {
-    const apiKey = JUDGE0_API_KEYS[i];
-    if (!apiKey || exhaustedKeys.has(apiKey)) continue;
-    const response = await fetch(`${JUDGE0_API_URL}/submissions?base64_encoded=true&wait=true`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-RapidAPI-Key': apiKey,
-        'X-RapidAPI-Host': JUDGE0_API_HOST,
-      } as Record<string, string>,
-      body: JSON.stringify(submission),
-    });
-    if (response.ok) {
-      return await response.json();
-    } else {
-      const errorText = await response.text();
-      if (response.status === 429) {
-        exhaustedKeys.add(apiKey);
-        continue;
-      }
-      if (response.status === 403) {
-        exhaustedKeys.add(apiKey);
-        continue;
-      }
-      throw new Error(`Judge0 API error: ${response.status} ${response.statusText} - ${errorText}`);
-    }
-  }
-  throw new Error('All API keys exhausted for this test case');
-}
